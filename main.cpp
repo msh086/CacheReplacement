@@ -46,9 +46,9 @@ int main(const int argc, const char * argv[]) {
 
 
 //    int line_size[] = {8, 16, 32, 64, 128};
-    _u64 line_size[] = {32,32 };
+    _u64 line_size[] = {64,64 };
     _u64 ways[] = {4,4};
-    _u64 cache_size[3] = {0x1000,0x8000};
+    _u64 cache_size[3] = {0x1000,0x00000};
     CacheSim cache;
     cache.init(cache_size, line_size,ways);
     cache.load_trace(parser.retrieve<string>("input").c_str());

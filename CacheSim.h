@@ -18,6 +18,9 @@ const char OPERATION_WRITE = 's';
 const char OPERATION_LOCK = 'k';
 const char OPERATION_UNLOCK = 'u';
 // 替换算法
+#include "map"
+
+
 enum cache_swap_style {
     CACHE_SWAP_FIFO,
     CACHE_SWAP_LRU,
@@ -38,11 +41,56 @@ public:
     _u8 flag;
     _u8 *buf;
 };
+class ShareMemoryPage{
+public:
+    _u64 tag;
+    union {
+        _u64 count;
+        _u64 lru_count;
+    };
+    ShareMemoryPage(){
+        this->free=true;
+        this->tag=0;
+        this->flag=0;
+        this->count=0;
+        this->lru_count=0;
+
+    }
+    bool free;
+    _u8 flag;
+    _u8 *buf;
+    bool isFree();
+
+};
+class Page{
+public:
+    _u64 tag;
+    _u64 count;
+    _u64 lru_count;
+    Page(){
+        this->tag=0;
+        this->count=0;
+        this->lru_count=0;
+    }
+};
+
+
 
 class CacheSim {
     // 隐患
 public:
+    std::map<int,std::map<int,_u64>> block_freq_each_time;
+    _u64 SM_in;
+    _u64 target_out;
+    _u64 target_in;
+    _u64 target;
+    int page_size;
+    std::map<_u64 ,int> miss_freequency;
     /**cache的总大小，单位byte*/
+    ShareMemoryPage* ShareMemory;
+    //sharememory
+
+
     _u64 cache_size[MAXLEVEL];
     /**cache line(Cache block)cache块的大小*/
     _u64 cache_line_size[MAXLEVEL];
@@ -59,6 +107,8 @@ public:
     /**真正的cache地址列。指针数组*/
     Cache_Line *caches[MAXLEVEL];
 
+    _u64 *lock_table;
+
     /**指令计数器*/
     _u64 tick_count;
     /**cache缓冲区,由于并没有数据*/
@@ -69,8 +119,11 @@ public:
     _u64 cache_r_count, cache_w_count;
     /**cache hit和miss的计数*/
     _u64 cache_hit_count[MAXLEVEL], cache_miss_count[MAXLEVEL];
+    _u64 SM_hit_count;
     /**空闲cache line的index记录，在寻找时，返回空闲line的index*/
     _u64 cache_free_num[MAXLEVEL];
+    int num_of_share_memory_page;
+    int free_SM_page;
 
     CacheSim();
     ~CacheSim();
@@ -102,6 +155,12 @@ public:
     double get_miss_rate(int level){
         return 100.0 * cache_miss_count[level] / (cache_miss_count[level] + cache_hit_count[level]);
     }
+
+
+    int check_sm_hit(_u64 addr, int level);
+    int get_free_sm_page();
+    void set_sm_page(_u64 index,_u64 addr, int level);
+    void swap_pages(Page *in_pages);
 
     void re_init();
 };
