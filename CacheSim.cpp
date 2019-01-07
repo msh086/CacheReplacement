@@ -26,7 +26,7 @@ bool ShareMemoryPage::isFree() {
 
 void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapping_ways[3]) {
 //如果输入配置不符合要求
-    if (a_cache_line_size < 0 || a_mapping_ways[0] < 1 || a_mapping_ways[1] < 1) {
+    if (a_cache_line_size[0] < 0 || a_cache_line_size[1] < 0 || a_mapping_ways[0] < 1 || a_mapping_ways[1] < 1) {
         return;
     }
     cache_size[0] = a_cache_size[0];
@@ -59,6 +59,7 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
 
     cache_r_count = 0;
     cache_w_count = 0;
+    cache_w_memory_count = 0;
     SM_in = 0;
     // 指令数，主要用来在替换策略的时候提供比较的key，在命中或者miss的时候，相应line会更新自己的count为当时的tick_count;
     tick_count = 0;
@@ -169,7 +170,7 @@ int CacheSim::get_cache_free_line(_u64 set_base, int level) {
             // TODO: 写回到L2 cache中。
             // TODO: 写延迟 ： mem， l2.
             caches[level][free_index].flag &= ~CACHE_FLAG_DIRTY;
-            cache_w_count++;
+            cache_w_memory_count++;
         }
     } else {
         printf("I should not show\n");
@@ -278,6 +279,7 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
             cache_miss_count[1]++;
             free_index_l2 = get_cache_free_line(set_base_l2, 1);
             set_cache_line((_u64) free_index_l2, addr, 1);
+            caches[1][free_index_l2].flag |= CACHE_FLAG_DIRTY;
         }
     } else {
 //        cache命中则直接返回
@@ -344,26 +346,27 @@ void CacheSim::load_trace(const char *filename) {
 
         }
     }
-    // 指令统计
+    // 文件中的指令统计
     printf("all r/w/sum: %lld %lld %lld \nread rate: %f%%\twrite rate: %f%%\n",
            rcount, wcount, tick_count,
            100.0 * rcount / tick_count,
            100.0 * wcount / tick_count
     );
     // miss率
-    printf("L1 miss/hit: %lld/%lld\t hit/miss rate: %f%%/%f%%\n",
-           cache_miss_count[0], cache_hit_count[0],
-           100.0 * cache_hit_count[0] / (cache_hit_count[0] + cache_miss_count[0]),
-           100.0 * cache_miss_count[0] / (cache_miss_count[0] + cache_hit_count[0]));
+//    printf("L1 miss/hit: %lld/%lld\t hit/miss rate: %f%%/%f%%\n",
+//           cache_miss_count[0], cache_hit_count[0],
+//           100.0 * cache_hit_count[0] / (cache_hit_count[0] + cache_miss_count[0]),
+//           100.0 * cache_miss_count[0] / (cache_miss_count[0] + cache_hit_count[0]));
     printf("L2 miss/hit SM hit: %lld/%lld/%lld\t hit/miss rate: %f%%/%f%% ShareMemory hit %f%%\n",
            cache_miss_count[1], cache_hit_count[1], SM_hit_count,
            100.0 * cache_hit_count[1] / (cache_hit_count[1] + cache_miss_count[1] + SM_hit_count),
            100.0 * cache_miss_count[1] / (cache_miss_count[1] + cache_hit_count[1] + SM_hit_count),
            100.0 * SM_hit_count / (cache_miss_count[1] + cache_hit_count[1] + SM_hit_count));
     printf("SM_in is %lld\t and cache in is %lld\n", SM_in, cache_miss_count[1]);
-    printf("%lld 被调出了%lld次 调入了%lld次\n", target, target_out, target_in);
-    printf("\n=======Bandwidth=======\nMemory --> Cache:\t%.4fGB",
-           cache_miss_count[1] * cache_line_size[1]*1.0 / 1024 / 1024);
+//    printf("%lld 被调出了%lld次 调入了%lld次\n", target, target_out, target_in);
+    printf("\n=======Bandwidth=======\nMemory --> Cache:\t%.4fGB\nCache --> Memory:\t%.4fMB\n",
+           cache_miss_count[1] * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024,
+           cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024);
     // 读写通信
 //    printf("read : %d Bytes \t %dKB\n write : %d Bytes\t %dKB \n",
 //           cache_r_count * cache_line_size,
