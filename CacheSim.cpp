@@ -7,7 +7,7 @@
 #include "CacheSim.h"
 #include <cstdlib>
 #include <cstring>
-#include <math.h>
+#include <cmath>
 #include <cstdio>
 #include <time.h>
 #include <climits>
@@ -23,6 +23,13 @@ bool ShareMemoryPage::isFree() {
     return this->free;
 }
 
+_u32 CacheSim::pow_int(int base, int expontent) {
+    _u32 sum = 1;
+    for (int i = 0; i < expontent; i++) {
+        sum *= base;
+    }
+    return sum;
+}
 
 void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapping_ways[3]) {
 //如果输入配置不符合要求
@@ -79,7 +86,11 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     SM_hit_count = 0;
     //测试时的默认配置
     swap_style[0] = CACHE_SWAP_LRU;
-    swap_style[1] = CACHE_SWAP_LRU;
+    swap_style[1] = CACHE_SWAP_SRRIP;
+    // 用于SRRIP算法
+    SRRIP_M = 5;
+    SRRIP_2_M_1 = pow_int(2, SRRIP_M) - 1;
+    SRRIP_2_M_2 = pow_int(2, SRRIP_M) - 2;
 
     lock_table = (_u64 *) malloc(sizeof(_u64) * 1024);
 
@@ -88,7 +99,7 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     srand((unsigned) time(NULL));
 }
 
-/**顶部的初始化放在最一开始，如果中途需要对tick_count进行清零和caches的清空，执行此。主要因为tick_count的自增可能会超过unsigned long long，而且一旦tick_count清零，caches里的count数据也就出现了错误。*/
+/**顶部的初始化放在最一开始，如果中途需要对tick_count进行清零和caches的清空，执行此。*/
 void CacheSim::re_init() {
     tick_count = 0;
     target_out = 0;
@@ -138,20 +149,44 @@ int CacheSim::get_cache_free_line(_u64 set_base, int level) {
     /**没有可用line，则执行替换算法
      * lock状态的块如何处理？？*/
     free_index = -1;
-    if (swap_style[level] == CACHE_SWAP_RAND) {
-        // TODO: 随机替换Lock状态的line后面再改
-        free_index = rand() % cache_mapping_ways[level];
-    } else {
-        // !!!BUG Fixed
-        min_count = ULONG_LONG_MAX;
-        for (j = 0; j < cache_mapping_ways[level]; ++j) {
-            if (caches[level][set_base + j].count < min_count &&
-                !(caches[level][set_base + j].flag & CACHE_FLAG_LOCK)) {
-                min_count = caches[level][set_base + j].count;
-                free_index = j;
+    switch (swap_style[level]) {
+        case CACHE_SWAP_RAND:
+            free_index = rand() % cache_mapping_ways[level];
+            break;
+        case CACHE_SWAP_LRU:
+            min_count = ULONG_LONG_MAX;
+            for (j = 0; j < cache_mapping_ways[level]; ++j) {
+                if (caches[level][set_base + j].count < min_count &&
+                    !(caches[level][set_base + j].flag & CACHE_FLAG_LOCK)) {
+                    min_count = caches[level][set_base + j].count;
+                    free_index = j;
+                }
             }
-        }
+            break;
+        case CACHE_SWAP_SRRIP:
+            while (free_index < 0) {
+                for (_u64 k = 0; k < cache_mapping_ways[level]; ++k) {
+                    if (caches[level][set_base + k].RRPV == SRRIP_2_M_1) {
+                        free_index = k;
+                        // break the for-loop
+                        break;
+                    }
+                }
+                // increment all RRPVs
+
+                if (free_index < 0) {
+                    // increment all RRPVs
+                    for (_u64 k = 0; k < cache_mapping_ways[level]; ++k) {
+                        caches[level][set_base + k].RRPV++;
+                    }
+                } else {
+                    // break the while-loop
+                    break;
+                }
+            }
+            break;
     }
+    //如果没有使用锁，那么这个if应该是不会进入的
     if (free_index < 0) {
         //如果全部被锁定了，应该会走到这里来。那么强制进行替换。强制替换的时候，需要setline?
         min_count = ULONG_LONG_MAX;
@@ -162,7 +197,6 @@ int CacheSim::get_cache_free_line(_u64 set_base, int level) {
             }
         }
     }
-    //
     if (free_index >= 0) {
         free_index += set_base;
         //如果原有的cache line是脏数据，标记脏位
@@ -179,7 +213,7 @@ int CacheSim::get_cache_free_line(_u64 set_base, int level) {
 }
 
 int CacheSim::check_sm_hit(_u64 addr, int level) {
-    _u64 i;
+    int i;
     for (i = 0; i < num_of_share_memory_page; ++i) {
         if (ShareMemory[i].tag == (addr >> page_size)) {
             ShareMemory[i].count = tick_count;
@@ -242,7 +276,7 @@ void CacheSim::set_sm_page(_u64 index, _u64 addr, int level) {
 }
 
 
-/**将数据写入cache line*/
+/**将数据写入cache line，只有在miss的时候才会执行*/
 void CacheSim::set_cache_line(_u64 index, _u64 addr, int level) {
     Cache_Line *line = caches[level] + index;
     // 这里每个line的buf和整个cache类的buf是重复的而且并没有填充内容。
@@ -252,6 +286,8 @@ void CacheSim::set_cache_line(_u64 index, _u64 addr, int level) {
     line->flag = (_u8) ~CACHE_FLAG_MASK;
     line->flag |= CACHE_FLAG_VALID;
     line->count = tick_count;
+    // 根据论文内容，需要将replace的block的RRPV设置为2^M-2;
+    line->RRPV = pow_int(2, SRRIP_M) - 2;
 }
 
 /**不需要分level*/
@@ -271,27 +307,35 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
     if (oper_style == OPERATION_WRITE) {
         if (hit_index_l2 >= 0) {
             cache_hit_count[1]++;
-            if (CACHE_SWAP_LRU == swap_style[1]) {
-                caches[1][hit_index_l2].lru_count = tick_count;
-            }
+            caches[1][hit_index_l2].count = tick_count;
             caches[1][hit_index_l2].flag |= CACHE_FLAG_DIRTY;
+            if (CACHE_SWAP_SRRIP == swap_style[1]) {
+                caches[1][hit_index_l2].RRPV = 0;
+            }
         } else {
             cache_miss_count[1]++;
             free_index_l2 = get_cache_free_line(set_base_l2, 1);
             set_cache_line((_u64) free_index_l2, addr, 1);
             caches[1][free_index_l2].flag |= CACHE_FLAG_DIRTY;
+            if (CACHE_SWAP_SRRIP == swap_style[1]) {
+                caches[1][free_index_l2].RRPV = SRRIP_2_M_2;
+            }
         }
     } else {
 //        cache命中则直接返回
         if (hit_index_l2 >= 0) {
             cache_hit_count[1]++;
-            if (CACHE_SWAP_LRU == swap_style[1]) {
-                caches[1][hit_index_l2].lru_count = tick_count;
+            caches[1][hit_index_l2].count = tick_count;
+            if (CACHE_SWAP_SRRIP == swap_style[1]) {
+                caches[1][hit_index_l2].RRPV = 0;
             }
         } else {
             cache_miss_count[1]++;
             free_index_l2 = get_cache_free_line(set_base_l2, 1);
             set_cache_line((_u64) free_index_l2, addr, 1);
+            if (CACHE_SWAP_SRRIP == swap_style[1]) {
+                caches[1][free_index_l2].RRPV = SRRIP_2_M_2;
+            }
         }
     }
 }
