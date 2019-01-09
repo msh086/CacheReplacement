@@ -145,7 +145,9 @@ public:
     int SRRIP_M;
     /** BRRIP的概率设置，论文里设置是1/32*/
     double EPSILON = 1.0 / 32;
-
+    /** DRRIP算法中的single policy selection (PSEL) counter*/
+    long long PSEL;
+    int cur_win_repalce_policy;
     CacheSim();
 
     ~CacheSim();
@@ -165,7 +167,8 @@ public:
 
     /**获取cache当前set中空余的line*/
     int get_cache_free_line(_u64 set_base, int level);
-
+    /**使用指定的swap策略获取cache当前set中空余的line*/
+    int get_cache_free_line_specific(_u64 set_base, int level, int a_swap_style);
     /**找到合适的line之后，将数据写入cache line中*/
     void set_cache_line(_u64 index, _u64 addr, int level);
 
@@ -188,7 +191,10 @@ public:
 
     /** 计算int的次幂*/
     _u32 pow_int(int base, int expontent);
+    _u64 pow_64(_u64 base, _u64 expontent);
 
+    /**判断当前set是不是选中作为sample的set，并返回给当前set设置的policy*/
+    int get_set_flag(_u64 set_base);
     int check_sm_hit(_u64 addr, int level);
 
     int get_free_sm_page();
