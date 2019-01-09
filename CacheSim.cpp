@@ -86,9 +86,9 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     SM_hit_count = 0;
     //测试时的默认配置
     swap_style[0] = CACHE_SWAP_LRU;
-    swap_style[1] = CACHE_SWAP_SRRIP;
+    swap_style[1] = CACHE_SWAP_BRRIP;
     // 用于SRRIP算法
-    SRRIP_M = 5;
+    SRRIP_M = 2;
     SRRIP_2_M_1 = pow_int(2, SRRIP_M) - 1;
     SRRIP_2_M_2 = pow_int(2, SRRIP_M) - 2;
 
@@ -286,8 +286,6 @@ void CacheSim::set_cache_line(_u64 index, _u64 addr, int level) {
     line->flag = (_u8) ~CACHE_FLAG_MASK;
     line->flag |= CACHE_FLAG_VALID;
     line->count = tick_count;
-    // 根据论文内容，需要将replace的block的RRPV设置为2^M-2;
-    line->RRPV = pow_int(2, SRRIP_M) - 2;
 }
 
 /**不需要分level*/
@@ -309,16 +307,30 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
             cache_hit_count[1]++;
             caches[1][hit_index_l2].count = tick_count;
             caches[1][hit_index_l2].flag |= CACHE_FLAG_DIRTY;
-            if (CACHE_SWAP_SRRIP == swap_style[1]) {
-                caches[1][hit_index_l2].RRPV = 0;
+            switch (swap_style[1]) {
+                case CACHE_SWAP_BRRIP:
+                case CACHE_SWAP_SRRIP:
+                    caches[1][hit_index_l2].RRPV = 0;
+                    break;
+                case CACHE_SWAP_SRRIP_FP:
+                    if (caches[1][hit_index_l2].RRPV != 0) {
+                        caches[1][hit_index_l2].RRPV -= 1;
+                    }
+                    break;
             }
         } else {
             cache_miss_count[1]++;
             free_index_l2 = get_cache_free_line(set_base_l2, 1);
             set_cache_line((_u64) free_index_l2, addr, 1);
             caches[1][free_index_l2].flag |= CACHE_FLAG_DIRTY;
-            if (CACHE_SWAP_SRRIP == swap_style[1]) {
-                caches[1][free_index_l2].RRPV = SRRIP_2_M_2;
+            switch (swap_style[1]) {
+                case CACHE_SWAP_SRRIP_FP:
+                case CACHE_SWAP_SRRIP:
+                    caches[1][free_index_l2].RRPV = SRRIP_2_M_2;
+                    break;
+                case CACHE_SWAP_BRRIP:
+                    caches[1][free_index_l2].RRPV = rand() / RAND_MAX > EPSILON ? SRRIP_2_M_1 : SRRIP_2_M_2;
+                    break;
             }
         }
     } else {
@@ -326,15 +338,29 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
         if (hit_index_l2 >= 0) {
             cache_hit_count[1]++;
             caches[1][hit_index_l2].count = tick_count;
-            if (CACHE_SWAP_SRRIP == swap_style[1]) {
-                caches[1][hit_index_l2].RRPV = 0;
+            switch (swap_style[1]) {
+                case CACHE_SWAP_BRRIP:
+                case CACHE_SWAP_SRRIP:
+                    caches[1][hit_index_l2].RRPV = 0;
+                    break;
+                case CACHE_SWAP_SRRIP_FP:
+                    if (caches[1][hit_index_l2].RRPV != 0) {
+                        caches[1][hit_index_l2].RRPV -= 1;
+                    }
+                    break;
             }
         } else {
             cache_miss_count[1]++;
             free_index_l2 = get_cache_free_line(set_base_l2, 1);
             set_cache_line((_u64) free_index_l2, addr, 1);
-            if (CACHE_SWAP_SRRIP == swap_style[1]) {
-                caches[1][free_index_l2].RRPV = SRRIP_2_M_2;
+            switch (swap_style[1]) {
+                case CACHE_SWAP_SRRIP_FP:
+                case CACHE_SWAP_SRRIP:
+                    caches[1][free_index_l2].RRPV = SRRIP_2_M_2;
+                    break;
+                case CACHE_SWAP_BRRIP:
+                    caches[1][free_index_l2].RRPV = rand() / RAND_MAX > EPSILON ? SRRIP_2_M_1 : SRRIP_2_M_2;
+                    break;
             }
         }
     }
@@ -408,6 +434,12 @@ void CacheSim::load_trace(const char *filename) {
            100.0 * SM_hit_count / (cache_miss_count[1] + cache_hit_count[1] + SM_hit_count));
     printf("SM_in is %lld\t and cache in is %lld\n", SM_in, cache_miss_count[1]);
 //    printf("%lld 被调出了%lld次 调入了%lld次\n", target, target_out, target_in);
+    char a_swap_style[100];
+//    switch (swap_style[1]){
+//        case CACHE_SWAP_LRU:
+//
+//    }
+//    printf("\n=======Cache Policy=======\n%s", );
     printf("\n=======Bandwidth=======\nMemory --> Cache:\t%.4fGB\nCache --> Memory:\t%.4fMB\n",
            cache_miss_count[1] * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024,
            cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024);

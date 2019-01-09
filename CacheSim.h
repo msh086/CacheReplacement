@@ -28,7 +28,10 @@ enum cache_swap_style {
     CACHE_SWAP_LRU,
     CACHE_SWAP_RAND,
     CACHE_SWAP_MAX,
-    CACHE_SWAP_SRRIP
+    CACHE_SWAP_SRRIP,
+    CACHE_SWAP_SRRIP_FP,
+    CACHE_SWAP_BRRIP,
+    CACHE_SWAP_DRRIP
 };
 
 
@@ -37,12 +40,7 @@ class Cache_Line {
 public:
     _u64 tag;
     /**计数，FIFO里记录最一开始的访问时间，LRU里记录上一次访问的时间*/
-    union {
-        _u64 count;
-        _u64 lru_count;
-        _u64 fifo_count;
-        _u64 srrip_count;
-    };
+    _u64 count;
     _u8 flag;
     _u8 *buf;
     /** 相当于当前block是否要被evict的权重，使用于RRIP替换策略中 ，有可能-u8过小*/
@@ -145,6 +143,8 @@ public:
     _u32 SRRIP_2_M_2;
     /** SRRIP 替换算法的配置，M值确定了每个block替换权重RRPV的上限*/
     int SRRIP_M;
+    /** BRRIP的概率设置，论文里设置是1/32*/
+    double EPSILON = 1.0 / 32;
 
     CacheSim();
 

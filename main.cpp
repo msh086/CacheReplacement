@@ -46,7 +46,7 @@ int main(const int argc, const char *argv[]) {
     parser.parse(argc, argv);
 
 
-    _u64 line_size[] = {256};
+    _u64 line_size[] = {64};
 //    _u64 ways[] = {8, 12, 16};
     _u64 ways[] = {8};
 //    int ways[] = {8};
