@@ -185,9 +185,8 @@ public:
     int unlock_cache_line(_u64 addr, int level);
 
     /**@return 返回miss率*/
-    double get_miss_rate(int level) {
-        return 100.0 * cache_miss_count[level] / (cache_miss_count[level] + cache_hit_count[level]);
-    }
+    double get_miss_rate(int level);
+    double get_hit_rate(int level);
 
     /** 计算int的次幂*/
     _u32 pow_int(int base, int expontent);

@@ -12,6 +12,7 @@
 #include <time.h>
 #include <climits>
 #include "map"
+#include <fstream>
 
 CacheSim::CacheSim() {}
 
@@ -96,7 +97,7 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     swap_style[0] = CACHE_SWAP_LRU;
     swap_style[1] = CACHE_SWAP_DRRIP;
     // 用于SRRIP算法
-    SRRIP_M = 2;
+    SRRIP_M = 10;
     SRRIP_2_M_1 = pow_int(2, SRRIP_M) - 1;
     SRRIP_2_M_2 = pow_int(2, SRRIP_M) - 2;
     PSEL = 0;
@@ -410,6 +411,12 @@ int CacheSim::get_set_flag(_u64 set_base) {
     return residual;
 }
 
+double CacheSim::get_miss_rate(int level) {
+    return 100.0 * cache_miss_count[level] / (cache_miss_count[level] + cache_hit_count[level]);
+}
+double CacheSim::get_hit_rate(int level) {
+    return 100.0 * cache_hit_count[level] / (cache_miss_count[level] + cache_hit_count[level]);
+}
 
 /**将数据写入cache line，只有在miss的时候才会执行*/
 void CacheSim::set_cache_line(_u64 index, _u64 addr, int level) {
@@ -554,6 +561,8 @@ void CacheSim::load_trace(const char *filename) {
         printf("load_trace %s failed\n", filename);
         return;
     }
+    int get_miss_rate_interval = 10000;
+    std::ofstream fmiss_rate("fmiss_rate");
     while (fgets(buf, sizeof(buf), fin)) {
         char tmp_style[5];
         char style;
@@ -590,7 +599,13 @@ void CacheSim::load_trace(const char *filename) {
                 break;
 
         }
+        if(get_miss_rate_interval > 0){get_miss_rate_interval--;}
+        else{
+            get_miss_rate_interval = 10000;
+            fmiss_rate<<get_hit_rate(1)<<"\t";
+        }
     }
+    fmiss_rate.close();
     // 文件中的指令统计
     printf("all r/w/sum: %lld %lld %lld \nread rate: %f%%\twrite rate: %f%%\n",
            rcount, wcount, tick_count,
@@ -609,12 +624,22 @@ void CacheSim::load_trace(const char *filename) {
            100.0 * SM_hit_count / (cache_miss_count[1] + cache_hit_count[1] + SM_hit_count));
     printf("SM_in is %lld\t and cache in is %lld\n", SM_in, cache_miss_count[1]);
 //    printf("%lld 被调出了%lld次 调入了%lld次\n", target, target_out, target_in);
-//    char a_swap_style[100];
-//    switch (swap_style[1]){
-//        case CACHE_SWAP_LRU:
-//
-//    }
-//    printf("\n=======Cache Policy=======\n%s", );
+    char a_swap_style[100];
+    switch (swap_style[1]){
+        case CACHE_SWAP_LRU:
+            strcpy(a_swap_style, "LRU");
+            break;
+        case CACHE_SWAP_DRRIP:
+            strcpy(a_swap_style, "DRRIP");
+            break;
+        case CACHE_SWAP_SRRIP:
+            strcpy(a_swap_style, "SRRIP");
+            break;
+        case CACHE_SWAP_BRRIP:
+            strcpy(a_swap_style, "BRRIP");
+            break;
+    }
+    printf("\n=======Cache Policy=======\n%s", a_swap_style);
     printf("\n=======Bandwidth=======\nMemory --> Cache:\t%.4fGB\nCache --> Memory:\t%.4fMB\n",
            cache_miss_count[1] * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024,
            cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024);

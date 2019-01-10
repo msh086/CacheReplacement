@@ -20,7 +20,7 @@ int main(const int argc, const char *argv[]) {
 ////    int ways[] = {8};
 ////    int cache_size[] = {0x800,0x1000,0x2000,0x4000,0x8000,0x10000,0x20000,0x40000,0x80000};
 //    int cache_size[] = {0x8000,0x10000,0x20000};
-//    int i,j,m;
+//    int i,j,m;`
 //    CacheSim cache;
 //    for (m = 0;m<sizeof(cache_size)/sizeof(int);m++){
 //        for (i=0; i<sizeof(line_size)/sizeof(int); i++){
@@ -48,7 +48,7 @@ int main(const int argc, const char *argv[]) {
 
     _u64 line_size[] = {64};
 //    _u64 ways[] = {8, 12, 16};
-    _u64 ways[] = {8};
+    _u64 ways[] = {256};
 //    int ways[] = {8};
 //    _u64 cache_size[] = {0x200000, 0x400000, 0x800000};
     _u64 cache_size[] = {0x400000};
