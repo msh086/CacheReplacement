@@ -148,6 +148,8 @@ public:
     /** DRRIP算法中的single policy selection (PSEL) counter*/
     long long PSEL;
     int cur_win_repalce_policy;
+    /** 写miss时，是否直接写到memory */
+    int write_allocation;
     CacheSim();
 
     ~CacheSim();

@@ -95,15 +95,15 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     SM_hit_count = 0;
     //测试时的默认配置
     swap_style[0] = CACHE_SWAP_LRU;
-    swap_style[1] = CACHE_SWAP_DRRIP;
+    swap_style[1] = CACHE_SWAP_LRU;
     // 用于SRRIP算法
     SRRIP_M = 10;
     SRRIP_2_M_1 = pow_int(2, SRRIP_M) - 1;
     SRRIP_2_M_2 = pow_int(2, SRRIP_M) - 2;
     PSEL = 0;
-    cur_win_repalce_policy = CACHE_SWAP_SRRIP;
+    cur_win_repalce_policy = CACHE_SWAP_LRU;
     lock_table = (_u64 *) malloc(sizeof(_u64) * 1024);
-
+    write_allocation = 0;
 
     re_init();
     srand((unsigned) time(NULL));
@@ -486,25 +486,29 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
             }
         } else {
             cache_miss_count[1]++;
-            free_index_l2 = get_cache_free_line_specific(set_base_l2, 1, temp_swap_style);
-            set_cache_line((_u64) free_index_l2, addr, 1);
-            caches[1][free_index_l2].flag |= CACHE_FLAG_DIRTY;
-            switch (temp_swap_style) {
-                case CACHE_SWAP_SRRIP_FP:
-                case CACHE_SWAP_SRRIP:
-                    caches[1][free_index_l2].RRPV = SRRIP_2_M_2;
-                    break;
-                case CACHE_SWAP_BRRIP:
-                    caches[1][free_index_l2].RRPV = rand() / RAND_MAX > EPSILON ? SRRIP_2_M_1 : SRRIP_2_M_2;
-                    break;
-            }
-            // 如果是动态策略，则还需要更新psel
-            if(swap_style[1] == CACHE_SWAP_DRRIP){
-                if(set_flag == 1){
-                    PSEL++;
-                } else if (set_flag == 0){
-                    PSEL--;
+            if(write_allocation){
+                free_index_l2 = get_cache_free_line_specific(set_base_l2, 1, temp_swap_style);
+                set_cache_line((_u64) free_index_l2, addr, 1);
+                caches[1][free_index_l2].flag |= CACHE_FLAG_DIRTY;
+                switch (temp_swap_style) {
+                    case CACHE_SWAP_SRRIP_FP:
+                    case CACHE_SWAP_SRRIP:
+                        caches[1][free_index_l2].RRPV = SRRIP_2_M_2;
+                        break;
+                    case CACHE_SWAP_BRRIP:
+                        caches[1][free_index_l2].RRPV = rand() / RAND_MAX > EPSILON ? SRRIP_2_M_1 : SRRIP_2_M_2;
+                        break;
                 }
+                // 如果是动态策略，则还需要更新psel
+                if(swap_style[1] == CACHE_SWAP_DRRIP){
+                    if(set_flag == 1){
+                        PSEL++;
+                    } else if (set_flag == 0){
+                        PSEL--;
+                    }
+                }
+            }else{
+                cache_w_memory_count++;
             }
         }
     } else {
