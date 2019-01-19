@@ -136,7 +136,12 @@ public:
     _u64 cache_free_num[MAXLEVEL];
     int num_of_share_memory_page;
     int free_SM_page;
-
+    /**总的延迟，指令周期数*/
+    _u64 overall_cycles;
+    /**memory的读写延迟，0为读，1为写*/
+    _u64 mem_latency[2];
+    /**cache的读写延迟，0为读，1为写*/
+    _u64 cache_latency[2];
     /** SRRIP算法中的2^M-1 */
     _u32 SRRIP_2_M_1;
     /** SRRIP算法中的2^M-2 */

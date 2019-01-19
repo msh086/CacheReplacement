@@ -77,7 +77,7 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     cache_w_count = 0;
     cache_w_memory_count = 0;
     SM_in = 0;
-    // 指令数，主要用来在替换策略的时候提供比较的key，在命中或者miss的时候，相应line会更新自己的count为当时的tick_count;
+    // ticktock，主要用来在替换策略的时候提供比较的key，在命中或者miss的时候，相应line会更新自己的count为当时的tick_count;
     tick_count = 0;
 //    cache_buf = (_u8 *) malloc(cache_size);
 //    memset(cache_buf, 0, this->cache_size);
@@ -103,8 +103,11 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     PSEL = 0;
     cur_win_repalce_policy = CACHE_SWAP_LRU;
     lock_table = (_u64 *) malloc(sizeof(_u64) * 1024);
-    write_allocation = 0;
-
+    write_allocation = 1;
+    /**延迟统计和设置*/
+    overall_cycles = 0;
+    mem_latency[0] = 100;
+    mem_latency[1] =
     re_init();
     srand((unsigned) time(NULL));
 }

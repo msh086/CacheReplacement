@@ -47,10 +47,10 @@ int main(const int argc, const char *argv[]) {
 
 
     _u64 line_size[] = {64};
-//    _u64 ways[] = {8, 12, 16};
-    _u64 ways[] = {256};
+//    _u64 ways[] = {8, 12, 16, 20,24};
+    _u64 ways[] = {8};
 //    int ways[] = {8};
-//    _u64 cache_size[] = {0x200000, 0x400000, 0x800000};
+//    _u64 cache_size[] = {0x200000, 0x400000, 0x800000, 0xc00000,0x1000000};
     _u64 cache_size[] = {0x400000};
     int i, j, m;
     CacheSim cache;
