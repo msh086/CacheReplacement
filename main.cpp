@@ -46,34 +46,38 @@ int main(const int argc, const char *argv[]) {
     parser.parse(argc, argv);
 
 
-    _u64 line_size[] = {64};
-//    _u64 ways[] = {8, 12, 16, 20,24};
-    _u64 ways[] = {8};
-//    int ways[] = {8};
-//    _u64 cache_size[] = {0x200000, 0x400000, 0x800000, 0xc00000,0x1000000};
-    _u64 cache_size[] = {0x400000};
-    int i, j, m;
+    _u64 line_size[] = {128};
+//    _u64 line_size[] = {64};
+    _u64 ways[] = {8,12,16,24,32};
+//    _u64 ways[] = {1};
+//    _u64 cache_size[] = {0x100000, 0x200000, 0x300000, 0x400000};
+    _u64 cache_size[] = {0x200000};
+    int ms[] = {3,4};
+    int i, j, m, k;
     CacheSim cache;
     for (m = 0; m < sizeof(cache_size) / sizeof(_u64); m++) {
         for (i = 0; i < sizeof(line_size) / sizeof(_u64); i++) {
             for (j = 0; j < sizeof(ways) / sizeof(_u64); j++) {
+                for (k = 0; k < sizeof(ms) / sizeof(int); k++) {
 //                for (int k = CACHE_SWAP_FIFO; k < CACHE_SWAP_MAX; ++k) {
-                printf("\n=================\ncache_size: %lld Bytes\tline_size: %lld\t mapping ways %lld \t \n",
-                       cache_size[m],
-                       line_size[i],
-                       ways[j]);
-                _u64 temp_cache_size[2], temp_line_size[2], temp_ways[2];
-                temp_cache_size[0] = 0x1000;
-                temp_cache_size[1] = cache_size[m];
-                temp_line_size[0] = 128;
-                temp_line_size[1] = line_size[i];
-                temp_ways[0] = 8;
-                temp_ways[1] = ways[j];
-                cache.init(temp_cache_size, temp_line_size, temp_ways);
+                    printf("\n=================\ncache_size: %lld Bytes\tline_size: %lld\t mapping ways %lld \t \n",
+                           cache_size[m],
+                           line_size[i],
+                           ways[j]);
+                    _u64 temp_cache_size[2], temp_line_size[2], temp_ways[2];
+                    temp_cache_size[0] = 0x1000;
+                    temp_cache_size[1] = cache_size[m];
+                    temp_line_size[0] = 128;
+                    temp_line_size[1] = line_size[i];
+                    temp_ways[0] = 8;
+                    temp_ways[1] = ways[j];
+                    cache.init(temp_cache_size, temp_line_size, temp_ways);
+                    cache.set_M(ms[k]);
 //                    cache.set_swap_style(k);
-                cache.load_trace(parser.retrieve<string>("input").c_str());
-                cache.re_init();
+                    cache.load_trace(parser.retrieve<string>("input").c_str());
+                    cache.re_init();
 //                }
+                }
             }
         }
     }

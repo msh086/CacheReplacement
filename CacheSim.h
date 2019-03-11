@@ -129,8 +129,12 @@ public:
     _u64 cache_r_count, cache_w_count;
     /**实际写内存的计数，cache --> memory */
     _u64 cache_w_memory_count;
+    /**实际读内存的计数，memory --> cache */
+    _u64 cache_r_memory_count;
     /**cache hit和miss的计数*/
     _u64 cache_hit_count[MAXLEVEL], cache_miss_count[MAXLEVEL];
+    /**分别统计读写的命中次数*/
+    _u64 cache_r_hit_count, cache_w_hit_count,cache_w_miss_count, cache_r_miss_count;
     _u64 SM_hit_count;
     /**空闲cache line的index记录，在寻找时，返回空闲line的index*/
     _u64 cache_free_num[MAXLEVEL];
@@ -153,14 +157,16 @@ public:
     /** DRRIP算法中的single policy selection (PSEL) counter*/
     long long PSEL;
     int cur_win_repalce_policy;
-    /** 写miss时，是否直接写到memory */
+    /** 写miss时，将数据读入cache */
     int write_allocation;
+    /**向cache写数据的时候，向memory也写一份。=0为write back*/
+    int write_through;
     CacheSim();
 
     ~CacheSim();
 
     void init(_u64 a_cache_size[], _u64 a_cache_line_size[], _u64 a_mapping_ways[]);
-
+    void set_M(int m);
     /**原代码中addr的处理有些问题，导致我没有成功运行他的代码。
      * 检查是否命中
      * @args:

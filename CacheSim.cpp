@@ -40,6 +40,12 @@ _u64 CacheSim::pow_64(_u64 base, _u64 expontent) {
     return sum;
 }
 
+void CacheSim::set_M(int m) {
+    SRRIP_M = m;
+    SRRIP_2_M_1 = pow_int(2, SRRIP_M) - 1;
+    SRRIP_2_M_2 = pow_int(2, SRRIP_M) - 2;
+}
+
 void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapping_ways[3]) {
 //如果输入配置不符合要求
     if (a_cache_line_size[0] < 0 || a_cache_line_size[1] < 0 || a_mapping_ways[0] < 1 || a_mapping_ways[1] < 1) {
@@ -76,6 +82,11 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     cache_r_count = 0;
     cache_w_count = 0;
     cache_w_memory_count = 0;
+    cache_r_memory_count = 0;
+    cache_r_hit_count = 0;
+    cache_w_hit_count = 0;
+    cache_w_miss_count = 0;
+    cache_r_miss_count = 0;
     SM_in = 0;
     // ticktock，主要用来在替换策略的时候提供比较的key，在命中或者miss的时候，相应line会更新自己的count为当时的tick_count;
     tick_count = 0;
@@ -95,19 +106,18 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     SM_hit_count = 0;
     //测试时的默认配置
     swap_style[0] = CACHE_SWAP_LRU;
-    swap_style[1] = CACHE_SWAP_LRU;
+    swap_style[1] = CACHE_SWAP_SRRIP;
     // 用于SRRIP算法
-    SRRIP_M = 10;
-    SRRIP_2_M_1 = pow_int(2, SRRIP_M) - 1;
-    SRRIP_2_M_2 = pow_int(2, SRRIP_M) - 2;
+
     PSEL = 0;
-    cur_win_repalce_policy = CACHE_SWAP_LRU;
+    cur_win_repalce_policy = CACHE_SWAP_SRRIP;
     lock_table = (_u64 *) malloc(sizeof(_u64) * 1024);
-    write_allocation = 1;
+    write_allocation = 0;
+    write_through = 0;
     /**延迟统计和设置*/
     overall_cycles = 0;
     mem_latency[0] = 100;
-    mem_latency[1] =
+//    mem_latency[1] =
     re_init();
     srand((unsigned) time(NULL));
 }
@@ -410,13 +420,14 @@ int CacheSim::get_set_flag(_u64 set_base) {
     int log2N = (int) log2(cache_set_size[1]);
     // 使用高位的几位，作为筛选.比如需要32 = 2^5个，则用最高的5位作为mask
     _u64 mask = pow_64(2, (_u64) (log2N - log2K)) - 1;
-    _u64  residual = set_base & mask;
+    _u64 residual = set_base & mask;
     return residual;
 }
 
 double CacheSim::get_miss_rate(int level) {
     return 100.0 * cache_miss_count[level] / (cache_miss_count[level] + cache_hit_count[level]);
 }
+
 double CacheSim::get_hit_rate(int level) {
     return 100.0 * cache_hit_count[level] / (cache_miss_count[level] + cache_hit_count[level]);
 }
@@ -448,9 +459,9 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
     hit_index_l1 = check_cache_hit(set_base_l1, addr, 0);
     int set_flag = get_set_flag(set_l2);
     int temp_swap_style = swap_style[1];
-    if (swap_style[1] == CACHE_SWAP_DRRIP){
+    if (swap_style[1] == CACHE_SWAP_DRRIP) {
         /**是否是sample set*/
-        switch (set_flag){
+        switch (set_flag) {
             case 0:
                 temp_swap_style = CACHE_SWAP_BRRIP;
                 break;
@@ -458,9 +469,9 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
                 temp_swap_style = CACHE_SWAP_SRRIP;
                 break;
             default:
-                if(PSEL > 0 ){
+                if (PSEL > 0) {
                     cur_win_repalce_policy = CACHE_SWAP_BRRIP;
-                }else{
+                } else {
                     cur_win_repalce_policy = CACHE_SWAP_SRRIP;
                 }
                 temp_swap_style = cur_win_repalce_policy;
@@ -471,9 +482,14 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
     //是否写操作
     if (oper_style == OPERATION_WRITE) {
         if (hit_index_l2 >= 0) {
+            cache_w_hit_count++;
             cache_hit_count[1]++;
             caches[1][hit_index_l2].count = tick_count;
-            caches[1][hit_index_l2].flag |= CACHE_FLAG_DIRTY;
+            if (write_through) {
+                cache_w_memory_count++;
+            } else {
+                caches[1][hit_index_l2].flag |= CACHE_FLAG_DIRTY;
+            }
             switch (temp_swap_style) {
                 case CACHE_SWAP_BRRIP:
                 case CACHE_SWAP_SRRIP:
@@ -488,11 +504,19 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
 //                    break;
             }
         } else {
+            cache_r_miss_count++;
             cache_miss_count[1]++;
-            if(write_allocation){
+            if (write_allocation) {
                 free_index_l2 = get_cache_free_line_specific(set_base_l2, 1, temp_swap_style);
                 set_cache_line((_u64) free_index_l2, addr, 1);
-                caches[1][free_index_l2].flag |= CACHE_FLAG_DIRTY;
+                cache_r_memory_count++;
+                // 这里可能不对。
+                if (write_through) {
+                    cache_w_memory_count++;
+                } else {
+                    // 只是置脏位，不用立刻写回去，这样如果下次是write hit，就可以减少一次memory写操作
+                    caches[1][free_index_l2].flag |= CACHE_FLAG_DIRTY;
+                }
                 switch (temp_swap_style) {
                     case CACHE_SWAP_SRRIP_FP:
                     case CACHE_SWAP_SRRIP:
@@ -503,20 +527,21 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
                         break;
                 }
                 // 如果是动态策略，则还需要更新psel
-                if(swap_style[1] == CACHE_SWAP_DRRIP){
-                    if(set_flag == 1){
+                if (swap_style[1] == CACHE_SWAP_DRRIP) {
+                    if (set_flag == 1) {
                         PSEL++;
-                    } else if (set_flag == 0){
+                    } else if (set_flag == 0) {
                         PSEL--;
                     }
                 }
-            }else{
+            } else {
                 cache_w_memory_count++;
             }
         }
     } else {
 //        cache命中则直接返回
         if (hit_index_l2 >= 0) {
+            cache_r_hit_count++;
             cache_hit_count[1]++;
             caches[1][hit_index_l2].count = tick_count;
             switch (temp_swap_style) {
@@ -531,6 +556,8 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
                     break;
             }
         } else {
+            cache_r_miss_count++;
+            cache_r_memory_count++;
             cache_miss_count[1]++;
             free_index_l2 = get_cache_free_line_specific(set_base_l2, 1, temp_swap_style);
             set_cache_line((_u64) free_index_l2, addr, 1);
@@ -544,10 +571,10 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
                     break;
             }
             // 如果是动态策略，则还需要更新psel
-            if(swap_style[1] == CACHE_SWAP_DRRIP){
-                if(set_flag == 1){
+            if (swap_style[1] == CACHE_SWAP_DRRIP) {
+                if (set_flag == 1) {
                     PSEL++;
-                } else if (set_flag == 0){
+                } else if (set_flag == 0) {
                     PSEL--;
                 }
             }
@@ -570,6 +597,7 @@ void CacheSim::load_trace(const char *filename) {
     }
     int get_miss_rate_interval = 10000;
     std::ofstream fmiss_rate("fmiss_rate");
+    _u64 i = 0;
     while (fgets(buf, sizeof(buf), fin)) {
         char tmp_style[5];
         char style;
@@ -606,10 +634,14 @@ void CacheSim::load_trace(const char *filename) {
                 break;
 
         }
-        if(get_miss_rate_interval > 0){get_miss_rate_interval--;}
-        else{
+        if (i % 10000000 == 0) {
+            printf("insts index:%lld\n", i);
+        }
+        i++;
+        if (get_miss_rate_interval > 0) { get_miss_rate_interval--; }
+        else {
             get_miss_rate_interval = 10000;
-            fmiss_rate<<get_hit_rate(1)<<"\t";
+            fmiss_rate << get_hit_rate(1) << "\t";
         }
     }
     fmiss_rate.close();
@@ -629,10 +661,15 @@ void CacheSim::load_trace(const char *filename) {
            100.0 * cache_hit_count[1] / (cache_hit_count[1] + cache_miss_count[1] + SM_hit_count),
            100.0 * cache_miss_count[1] / (cache_miss_count[1] + cache_hit_count[1] + SM_hit_count),
            100.0 * SM_hit_count / (cache_miss_count[1] + cache_hit_count[1] + SM_hit_count));
+    printf("read hit rate:%f%%\twrite hit rate:%f%%\n",
+           100.0 * cache_r_hit_count / (cache_r_hit_count + cache_r_miss_count),
+           100.0 * cache_w_hit_count / (cache_w_hit_count + cache_w_miss_count));
+    printf("read hit count\t%lld\tmiss count\t%lld\nwrite hit count\t%lld\tmiss count\t%lld\n", cache_r_hit_count, cache_r_miss_count, cache_w_hit_count, cache_w_miss_count);
     printf("SM_in is %lld\t and cache in is %lld\n", SM_in, cache_miss_count[1]);
+    printf("Write through:\t%d\twrite allocation:\t%d\n", write_through, write_allocation);
 //    printf("%lld 被调出了%lld次 调入了%lld次\n", target, target_out, target_in);
     char a_swap_style[100];
-    switch (swap_style[1]){
+    switch (swap_style[1]) {
         case CACHE_SWAP_LRU:
             strcpy(a_swap_style, "LRU");
             break;
@@ -645,10 +682,16 @@ void CacheSim::load_trace(const char *filename) {
         case CACHE_SWAP_BRRIP:
             strcpy(a_swap_style, "BRRIP");
             break;
+        case CACHE_SWAP_SRRIP_FP:
+            strcpy(a_swap_style, "SRRIP_FP");
+            break;
     }
     printf("\n=======Cache Policy=======\n%s", a_swap_style);
+    if (swap_style[1] == CACHE_SWAP_SRRIP) {
+        printf("\t%d", SRRIP_M);
+    }
     printf("\n=======Bandwidth=======\nMemory --> Cache:\t%.4fGB\nCache --> Memory:\t%.4fMB\n",
-           cache_miss_count[1] * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024,
+           cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024,
            cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024);
     // 读写通信
 //    printf("read : %d Bytes \t %dKB\n write : %d Bytes\t %dKB \n",
