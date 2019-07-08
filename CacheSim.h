@@ -21,6 +21,7 @@ const char OPERATION_UNLOCK = 'u';
 
 
 #include "map"
+#include <vector>
 
 /** 替换算法*/
 enum cache_swap_style {
@@ -161,6 +162,19 @@ public:
     int write_allocation;
     /**向cache写数据的时候，向memory也写一份。=0为write back*/
     int write_through;
+    /**后添加的变量*/
+    int sample_num;
+    _u64 *max_page;
+    int page_unit;
+    _u64 sample_time;
+    double start_time = 0;
+    std::map<_u64, _u64> sample_map;
+    int bit_num = 0;
+//    int page_cnt = 0;//取样周期内访问的页数
+    int sample_cnt = 0;//记录取样的次数
+    int envoke_cnt = 0;//记录Sample()被调用的次数
+    std::vector<_u64> block_set;
+
     CacheSim();
 
     ~CacheSim();
@@ -178,6 +192,9 @@ public:
      * TODO: check the addr */
     int check_cache_hit(_u64 set_base, _u64 addr, int level);
 
+
+    void sample(_u64 addr,double op_time);
+
     /**获取cache当前set中空余的line*/
     int get_cache_free_line(_u64 set_base, int level);
     /**使用指定的swap策略获取cache当前set中空余的line*/
@@ -187,6 +204,13 @@ public:
 
     /**对一个指令进行分析*/
     void do_cache_op(_u64 addr, char oper_style);
+
+    /**读取取样的参数*/
+    void load_sample_config(int input_sample_num, int page_unit, int sample_time);
+//    void load_sample_config(int input_sample_num, int page_unit);
+
+    /**取样：取当亲1ms内使用频率最高的页，作为下一毫秒使用频率最高的页*/
+//    void CacheSim::sample(_u64 addr, double op_time);
 
     /**读入trace文件*/
     void load_trace(const char *filename);

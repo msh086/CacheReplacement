@@ -1,0 +1,38 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/embedded/文档/华为/simulator/CacheSim.cpp
+CacheSim.h
+/home/embedded/文档/华为/simulator/CacheSim.h
+cstdlib
+-
+cstring
+-
+cmath
+-
+cstdio
+-
+time.h
+-
+climits
+-
+map
+/home/embedded/文档/华为/simulator/map
+fstream
+-
+vector
+-
+algorithm
+-
+
+/home/embedded/文档/华为/simulator/CacheSim.h
+map
+/home/embedded/文档/华为/simulator/map
+vector
+-
+

@@ -13,6 +13,8 @@
 #include <climits>
 #include "map"
 #include <fstream>
+#include <vector>
+#include <algorithm>
 
 CacheSim::CacheSim() {}
 
@@ -105,15 +107,16 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     ShareMemory = new ShareMemoryPage[num_of_share_memory_page];
     SM_hit_count = 0;
     //测试时的默认配置
-    swap_style[0] = CACHE_SWAP_LRU;
-    swap_style[1] = CACHE_SWAP_SRRIP;
+    swap_style[0] = CACHE_SWAP_SRRIP;
+    swap_style[1] = CACHE_SWAP_LRU;
     // 用于SRRIP算法
 
     PSEL = 0;
     cur_win_repalce_policy = CACHE_SWAP_SRRIP;
     lock_table = (_u64 *) malloc(sizeof(_u64) * 1024);
-    write_allocation = 0;
+
     write_through = 0;
+    write_allocation = 0;
     /**延迟统计和设置*/
     overall_cycles = 0;
     mem_latency[0] = 100;
@@ -256,7 +259,7 @@ int CacheSim::get_cache_free_line(_u64 set_base, int level) {
 /**获取当前set中可用的line，如果没有，就找到要被替换的块*/
 int CacheSim::get_cache_free_line_specific(_u64 set_base, int level, int a_swap_style) {
     _u64 i, min_count, j;
-    int free_index;
+    int free_index;//要替换的
     /**从当前cache set里找可用的空闲line，可用：脏数据，空闲数据
      * cache_free_num是统计的整个cache的可用块*/
     for (i = 0; i < cache_mapping_ways[level]; ++i) {
@@ -479,6 +482,8 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
     }
 
 
+
+
     //是否写操作
     if (oper_style == OPERATION_WRITE) {
         if (hit_index_l2 >= 0) {
@@ -504,7 +509,8 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
 //                    break;
             }
         } else {
-            cache_r_miss_count++;
+//            cache_r_miss_count++;
+            cache_w_miss_count++;
             cache_miss_count[1]++;
             if (write_allocation) {
                 free_index_l2 = get_cache_free_line_specific(set_base_l2, 1, temp_swap_style);
@@ -582,6 +588,86 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
     }
 }
 
+bool comp_by_value(std::pair<_u64, _u64> &a, std::pair<_u64, _u64> &b) {
+    return a.second > b.second;
+}
+
+
+/*
+ * 加载配置取样有关的参数
+ * input_sample_num: 每页取样的cacheline数
+ * page_unit：每页分成几分
+ * input_sample_time：取样间隔时间
+ * */
+void CacheSim::load_sample_config(int sample_num, int page_unit, int sample_time)
+{
+    this->sample_num = sample_num * page_unit;
+    this->max_page = new _u64[this->sample_num];
+    this->page_unit = page_unit;
+    this->sample_time = sample_time*1e6;
+
+    int tmp = this->page_unit;
+    if(tmp > 1) {
+        while(tmp!=1) {
+            bit_num++;
+            tmp /= 2;
+        }
+    }
+    printf("bitnum: %d\n", bit_num);
+}
+
+
+
+void CacheSim::sample(_u64 addr, double op_time) {
+    envoke_cnt++;
+//    if(envoke_cnt>453641&&envoke_cnt<912512)
+//    {
+//        block_set.insert(block_set.end(), addr);
+//    }
+
+
+//    _u64 sample_time = 3e6;
+    _u64 Page_number = addr >> (12-bit_num);
+//    printf("***Page_number:%llu***\n", Page_number);
+    //开始时间
+    if (start_time == 0) {
+        start_time = op_time;
+    }
+
+    //开始取样
+    if (op_time - start_time < sample_time) {
+        //在取样周期内
+        sample_map[Page_number]++;
+    } else {
+        sample_cnt++;
+//        printf("envoke_cnt:%d\n", envoke_cnt);
+//        printf("=====================\n");
+        std::vector<std::pair<_u64, _u64>> result(sample_map.begin(), sample_map.end());
+        std::sort(result.begin(), result.end(), comp_by_value);
+        int tmp = 0;
+        std::vector<std::pair<_u64, _u64>>::iterator it;
+        //找到取样时间内最多的n页
+        for (it = result.begin(); it != result.end() && tmp < this->sample_num; it++) {
+            this->max_page[tmp++] = it->first;
+        }
+
+        //sample_map的长度即为当前周期内page的数量
+//        printf("sample_cnt:%d\n", sample_cnt);
+//        if(sample_cnt == 1)
+//        {
+//            std::map<_u64, _u64>::iterator iter;
+//            iter = sample_map.begin();
+//            while(iter!=sample_map.end())
+//            {
+////                printf("sample_page: %llu\n", iter->first);
+//                iter++;
+//            }
+//        }
+        sample_map.clear();
+        start_time = op_time;
+    }
+}
+
 
 /**从文件读取trace，在我最后的修改目标里，为了适配项目，这里需要改掉*/
 void CacheSim::load_trace(const char *filename) {
@@ -591,6 +677,7 @@ void CacheSim::load_trace(const char *filename) {
     // 记录的是trace中指令的读写，由于cache机制，和真正的读写次数当然不一样。。主要是如果设置的写回法，则写会等在cache中，直到被替换。
     _u64 rcount = 0, wcount = 0;
     fin = fopen(filename, "r");
+
     if (!fin) {
         printf("load_trace %s failed\n", filename);
         return;
@@ -620,7 +707,35 @@ void CacheSim::load_trace(const char *filename) {
             printf("%s", tmp_style);
             return;
         }
-        do_cache_op(addr, style);
+
+//        do_cache_op(addr, style);
+//        printf("addr:%x\n", addr);
+
+        sample(addr, ATIME);
+
+//        //判断(不在前1500页时，还要考虑命不命中)
+////        do_cache_op(addr, style);
+        int cnt;
+        int is_find = 0;
+        for (cnt = 0; cnt < this->sample_num; cnt++) {
+            if (this->max_page[cnt] == addr >> (12-bit_num))
+            {
+                is_find = 1;
+                break;
+            }
+        }
+
+        if (is_find == 1) {
+            do_cache_op(addr, style);
+        } else {
+            if(style == OPERATION_WRITE)
+                cache_w_miss_count++;
+            else
+                cache_r_miss_count++;
+            cache_miss_count[1]++;
+        }
+
+
         switch (style) {
             case 'l' :
                 rcount++;
@@ -632,7 +747,6 @@ void CacheSim::load_trace(const char *filename) {
                 break;
             case 'u' :
                 break;
-
         }
         if (i % 10000000 == 0) {
             printf("insts index:%lld\n", i);
@@ -664,7 +778,8 @@ void CacheSim::load_trace(const char *filename) {
     printf("read hit rate:%f%%\twrite hit rate:%f%%\n",
            100.0 * cache_r_hit_count / (cache_r_hit_count + cache_r_miss_count),
            100.0 * cache_w_hit_count / (cache_w_hit_count + cache_w_miss_count));
-    printf("read hit count\t%lld\tmiss count\t%lld\nwrite hit count\t%lld\tmiss count\t%lld\n", cache_r_hit_count, cache_r_miss_count, cache_w_hit_count, cache_w_miss_count);
+    printf("read hit count\t%lld\tmiss count\t%lld\nwrite hit count\t%lld\tmiss count\t%lld\n", cache_r_hit_count,
+           cache_r_miss_count, cache_w_hit_count, cache_w_miss_count);
     printf("SM_in is %lld\t and cache in is %lld\n", SM_in, cache_miss_count[1]);
     printf("Write through:\t%d\twrite allocation:\t%d\n", write_through, write_allocation);
 //    printf("%lld 被调出了%lld次 调入了%lld次\n", target, target_out, target_in);
@@ -690,9 +805,13 @@ void CacheSim::load_trace(const char *filename) {
     if (swap_style[1] == CACHE_SWAP_SRRIP) {
         printf("\t%d", SRRIP_M);
     }
-    printf("\n=======Bandwidth=======\nMemory --> Cache:\t%.4fGB\nCache --> Memory:\t%.4fMB\n",
+    printf("\n=======Bandwidth=======\nMemory --> Cache:\t%.4fGB\nCache --> Memory:\t%.4fMB\ncache sum:\t%.4fGB\nsum:\t%.4fGB\n",
            cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024,
-           cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024);
+           cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024,
+           (cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024)+cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024/ 1024,
+           (cache_miss_count[1]+ cache_hit_count[1]-tick_count) *cache_line_size[1] *1.0/1024/1024/1024
+           +((cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024)+cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024/ 1024));
+    printf("sample_cnt:%d\n", sample_cnt);
     // 读写通信
 //    printf("read : %d Bytes \t %dKB\n write : %d Bytes\t %dKB \n",
 //           cache_r_count * cache_line_size,
@@ -700,6 +819,17 @@ void CacheSim::load_trace(const char *filename) {
 //           cache_w_count * cache_line_size,
 //           (cache_w_count * cache_line_size) >> 10);
     fclose(fin);
+//    FILE *fout;
+//    fout = fopen("/home/embedded/文档/华为/运行结果6.29/取样后的片段/1m_sample1000_第二次取样.txt", "a");
+//    for (int ii=0; ii < block_set.size(); ii++){
+////        printf("%llu\n", block_set[ii]);
+//        fprintf(fout, "%llu\n", block_set[ii]);
+//    }
+//    fclose(fout);
+
+//    fprintf(fout,"hit rate: %f%%\nsum:\t%.4fGB\n",100.0 * cache_hit_count[1] / (cache_hit_count[1] + cache_miss_count[1] + SM_hit_count),
+//            (cache_miss_count[1]+ cache_hit_count[1]-tick_count) *cache_line_size[1] *1.0/1024/1024/1024
+//            +((cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024)+cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024/ 1024));//写入到文件末尾
 
 }
 
