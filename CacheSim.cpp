@@ -599,73 +599,229 @@ bool comp_by_value(std::pair<_u64, _u64> &a, std::pair<_u64, _u64> &b) {
  * page_unit：每页分成几分
  * input_sample_time：取样间隔时间
  * */
-void CacheSim::load_sample_config(int sample_num, int page_unit, int sample_time)
-{
-    this->sample_num = sample_num * page_unit;
-    this->max_page = new _u64[this->sample_num];
-    this->page_unit = page_unit;
-    this->sample_time = sample_time*1e6;
-
-    int tmp = this->page_unit;
-    if(tmp > 1) {
-        while(tmp!=1) {
-            bit_num++;
-            tmp /= 2;
-        }
-    }
-    printf("bitnum: %d\n", bit_num);
-}
-
-
-
-void CacheSim::sample(_u64 addr, double op_time) {
-    envoke_cnt++;
-//    if(envoke_cnt>453641&&envoke_cnt<912512)
-//    {
-//        block_set.insert(block_set.end(), addr);
+//void CacheSim::load_sample_config(int sample_num, int page_unit, int sample_time)
+//{
+//    this->sample_num = sample_num * page_unit;
+//    this->max_page = new _u64[this->sample_num];
+//    this->page_unit = page_unit;
+//    this->sample_time = sample_time*1e6;
+//
+//    int tmp = this->page_unit;
+//    if(tmp > 1) {
+//        while(tmp!=1) {
+//            bit_num++;
+//            tmp /= 2;
+//        }
 //    }
+//    printf("bitnum: %d\n", bit_num);
+//}
+//
+//
+//
+//void CacheSim::sample(_u64 addr, double op_time) {
+//    envoke_cnt++;
+////    if(envoke_cnt>453641&&envoke_cnt<912512)
+////    {
+////        block_set.insert(block_set.end(), addr);
+////    }
+//
+//
+////    _u64 sample_time = 3e6;
+//    _u64 Page_number = addr >> (12-bit_num);
+////    printf("***Page_number:%llu***\n", Page_number);
+//    //开始时间
+//    if (start_time == 0) {
+//        start_time = op_time;
+//    }
+//
+//    //开始取样
+//    if (op_time - start_time < sample_time) {
+//        //在取样周期内
+//        sample_map[Page_number]++;
+//    } else {
+//        sample_cnt++;
+////        printf("envoke_cnt:%d\n", envoke_cnt);
+////        printf("=====================\n");
+//        std::vector<std::pair<_u64, _u64>> result(sample_map.begin(), sample_map.end());
+//        std::sort(result.begin(), result.end(), comp_by_value);
+//        int tmp = 0;
+//        std::vector<std::pair<_u64, _u64>>::iterator it;
+//        //找到取样时间内最多的n页
+//        for (it = result.begin(); it != result.end() && tmp < this->sample_num; it++) {
+//            this->max_page[tmp++] = it->first;
+//        }
+//
+//        //sample_map的长度即为当前周期内page的数量
+////        printf("sample_cnt:%d\n", sample_cnt);
+////        if(sample_cnt == 1)
+////        {
+////            std::map<_u64, _u64>::iterator iter;
+////            iter = sample_map.begin();
+////            while(iter!=sample_map.end())
+////            {
+//////                printf("sample_page: %llu\n", iter->first);
+////                iter++;
+////            }
+////        }
+//        sample_map.clear();
+//        start_time = op_time;
+//    }
+//}
+/*********************************************************/
 
+/**
+ * 查找filter中被替换的page
+ * 返回：victim page的index；没有这样的页则返回-1
+ * */
+int CacheSim::find_free_page(){
 
-//    _u64 sample_time = 3e6;
-    _u64 Page_number = addr >> (12-bit_num);
-//    printf("***Page_number:%llu***\n", Page_number);
-    //开始时间
-    if (start_time == 0) {
-        start_time = op_time;
-    }
+//    printf("find free page\n");
+    find_cnt++;
 
-    //开始取样
-    if (op_time - start_time < sample_time) {
-        //在取样周期内
-        sample_map[Page_number]++;
-    } else {
-        sample_cnt++;
-//        printf("envoke_cnt:%d\n", envoke_cnt);
-//        printf("=====================\n");
-        std::vector<std::pair<_u64, _u64>> result(sample_map.begin(), sample_map.end());
-        std::sort(result.begin(), result.end(), comp_by_value);
-        int tmp = 0;
-        std::vector<std::pair<_u64, _u64>>::iterator it;
-        //找到取样时间内最多的n页
-        for (it = result.begin(); it != result.end() && tmp < this->sample_num; it++) {
-            this->max_page[tmp++] = it->first;
+    //从p_pointer处开始遍历filter
+//    std::vector<Page>::iterator iter;
+//    iter = std::find(filter.begin(),filter.end(),*page_pointer);
+    Page p;
+//    if(iter == filter.begin()) { //从头开始遍历
+        for(int i=0; i<filter.size(); i++){
+            p = filter[i];
+            if(p.frequency > hot_page_thresh_hold && p.rotation_cnt < expiration) //p是hot page，保留它
+                continue;
+            else //p为victim page，将其替换
+                return i;
         }
-
-        //sample_map的长度即为当前周期内page的数量
-//        printf("sample_cnt:%d\n", sample_cnt);
-//        if(sample_cnt == 1)
-//        {
-//            std::map<_u64, _u64>::iterator iter;
-//            iter = sample_map.begin();
-//            while(iter!=sample_map.end())
+        printf("从头开始遍历\n");
+//    }
+//    else { //pointer指在filter的中间某一位置：mid_index
+//        int mid_index = std::distance(filter.begin(), iter);
+//        for (int j = mid_index; j < filter.size(); j++){
+//            p = filter[j];
+//            if(p.frequency > hot_page_thresh_hold && p.rotation_cnt < expiration) //p是hot page，保留它
+//                continue;
+//            else //p为victim page，将其替换
 //            {
-////                printf("sample_page: %llu\n", iter->first);
-//                iter++;
+////                printf("****j****\n");
+//                return j;
 //            }
 //        }
-        sample_map.clear();
-        start_time = op_time;
+//
+//        for (int k = 0; k < mid_index; k++){
+//            p = filter[k];
+//            if(p.frequency > hot_page_thresh_hold && p.rotation_cnt < expiration) //p是hot page，保留它
+//                continue;
+//            else //p为victim page，将其替换
+//            {
+////                printf("****k****\n");
+//                return k;
+//            }
+//        }
+//    }
+
+//    printf("direct miss");
+
+    return -1;
+}
+
+/*
+ * 根据CLOCK-DWF算法的思想来预取page
+ * filter中的每个1/16 page要维持两个参数：page_frequency；rotation_count
+ * filter size设为1000*16
+ * */
+void CacheSim::CLOCK_DWF(_u64 addr, char style){
+    Page p;
+    p.page_num = addr >> 8; //考虑1/16页
+
+    //判断当前页是否在filter中
+    std::vector<Page>::iterator iter;
+    iter = std::find(filter.begin(), filter.end(), p);
+    bool inFilter;
+    int index; //如果该页在filter中，其下标
+    int directMiss = 0;
+
+    if(iter != filter.end()) {
+        inFilter = true;
+        index = std::distance(filter.begin(), iter);
     }
+    else
+        inFilter = false;
+
+    /*当前访问的页不在filter中*/
+    if(!inFilter) {
+        /*filter没有满，则存放该页*/
+        if(filter.size() < 16000) {
+
+//            printf("filter没满：do cache op\n"); //运行1000次
+
+            p.frequency = 1;
+            p.rotation_cnt = 0;
+            filter.push_back(p);
+
+            do_cache_op(addr, style);
+
+//            page_pointer = &filter[0];
+//            printf("page_num:%llu\n", (filter.end()-1)->page_num);
+            index = filter.size()-1;
+        }
+        /*filter满了，寻找被替换的页*/
+        else {
+            int victim_idx = find_free_page(); //victim page的index
+
+
+            if(victim_idx != -1) { //找到了，替换
+
+//                printf("victim page: %d\n", victim_idx);
+
+                p.frequency = 1;
+                p.rotation_cnt = 0;
+                filter.insert(filter.begin()+victim_idx, p);
+
+                //删除victim page
+                filter.erase(filter.begin()+victim_idx+1);
+
+                do_cache_op(addr, style);
+
+//                page_pointer = &filter[victim_idx+1];
+                index = victim_idx;
+            }
+            else { //没有找到victim page，该页不放入filter，直接miss
+
+                printf("direct miss");
+                miss_cnt++;
+
+                directMiss = 1;
+
+                if(style == OPERATION_WRITE)
+                    cache_w_miss_count++;
+                else
+                    cache_r_miss_count++;
+                cache_miss_count[1]++;
+
+//                page_pointer = &filter[0];//?没有找到则下一次查找从filter头开始
+            }
+        }
+    }
+    /*当前访问的页在filter中，此时页的下标是index*/
+    else {
+
+//        printf("页在filter中：do cache op\n");
+        do_cache_op(addr, style);
+        filter[index].frequency++;
+        filter[index].rotation_cnt = 0;
+
+//        *page_pointer = filter[index+1];
+    }
+
+    //对于所有未涉及的页，rotation_cnt++
+    for(int i=0; i<filter.size(); i++) {
+        if(directMiss == 1)
+            filter[i].rotation_cnt++;
+        else
+            if(i!=index)
+                filter[i].rotation_cnt++;
+
+    }
+
+//    printf("page_num%llu\n", page_pointer->page_num);
 }
 
 
@@ -709,31 +865,32 @@ void CacheSim::load_trace(const char *filename) {
         }
 
 //        do_cache_op(addr, style);
-//        printf("addr:%x\n", addr);
 
-        sample(addr, ATIME);
+//        sample(addr, ATIME);
 
 //        //判断(不在前1500页时，还要考虑命不命中)
-////        do_cache_op(addr, style);
-        int cnt;
-        int is_find = 0;
-        for (cnt = 0; cnt < this->sample_num; cnt++) {
-            if (this->max_page[cnt] == addr >> (12-bit_num))
-            {
-                is_find = 1;
-                break;
-            }
-        }
+//        int cnt;
+//        int is_find = 0;
+//        for (cnt = 0; cnt < this->sample_num; cnt++) {
+//            if (this->max_page[cnt] == addr >> (12-bit_num))
+//            {
+//                is_find = 1;
+//                break;
+//            }
+//        }
+//
+//        if (is_find == 1) {
+//            do_cache_op(addr, style);
+//        } else {
+//            if(style == OPERATION_WRITE)
+//                cache_w_miss_count++;
+//            else
+//                cache_r_miss_count++;
+//            cache_miss_count[1]++;
+//        }
 
-        if (is_find == 1) {
-            do_cache_op(addr, style);
-        } else {
-            if(style == OPERATION_WRITE)
-                cache_w_miss_count++;
-            else
-                cache_r_miss_count++;
-            cache_miss_count[1]++;
-        }
+        /*filter + do cache op*/
+        CLOCK_DWF(addr, style);
 
 
         switch (style) {
@@ -811,7 +968,9 @@ void CacheSim::load_trace(const char *filename) {
            (cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024)+cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024/ 1024,
            (cache_miss_count[1]+ cache_hit_count[1]-tick_count) *cache_line_size[1] *1.0/1024/1024/1024
            +((cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024)+cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024/ 1024));
-    printf("sample_cnt:%d\n", sample_cnt);
+    printf("find count:%d\n", find_cnt);
+    printf("direct miss count:%d\n", miss_cnt);
+
     // 读写通信
 //    printf("read : %d Bytes \t %dKB\n write : %d Bytes\t %dKB \n",
 //           cache_r_count * cache_line_size,

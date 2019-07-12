@@ -79,11 +79,18 @@ public:
     _u64 count;
     _u64 lru_count;
 
+    /**xpf: CLOCK-DWF*/
+    _u32 frequency; //页在filter中，被访问的次数
+    _u32 rotation_cnt; //页在filter中，但未被访问的次数
+    _u64 page_num;//页号
+
     Page() {
         this->tag = 0;
         this->count = 0;
         this->lru_count = 0;
     }
+
+    bool operator == (const Page &p) {return (this->page_num == p.page_num);} //重载==
 };
 
 
@@ -162,8 +169,18 @@ public:
     int write_allocation;
     /**向cache写数据的时候，向memory也写一份。=0为write back*/
     int write_through;
+
     /**后添加的变量*/
-    int sample_num;
+    /**xpf:CLOCK-DWF filter*/
+    std::vector<Page> filter;
+    int ptr_index;//记录遍历filter后的位置
+    _u32 hot_page_thresh_hold = 1;
+    int expiration = 1000; //这两个值还需要实验一下
+    _u64 find_cnt = 0;
+    _u64 miss_cnt = 0;//直接判为miss的次数
+
+    /**xpf:sample有关的变量*/
+    /*int sample_num;
     _u64 *max_page;
     int page_unit;
     _u64 sample_time;
@@ -173,7 +190,7 @@ public:
 //    int page_cnt = 0;//取样周期内访问的页数
     int sample_cnt = 0;//记录取样的次数
     int envoke_cnt = 0;//记录Sample()被调用的次数
-    std::vector<_u64> block_set;
+    std::vector<_u64> block_set;*/
 
     CacheSim();
 
@@ -193,7 +210,15 @@ public:
     int check_cache_hit(_u64 set_base, _u64 addr, int level);
 
 
-    void sample(_u64 addr,double op_time);
+    /**xpf: 读取取样的参数*/
+//    void load_sample_config(int input_sample_num, int page_unit, int sample_time);
+    /**xpf: 用单位取样周期内的情况来估计下一取样周期内的情况（取当亲1ms内使用频率最高的页，作为下一毫秒使用频率最高的页）*/
+//    void sample(_u64 addr,double op_time);
+    /**xpf:CLOCK-DWF*/
+    void CLOCK_DWF(_u64 addr, char style);
+    /**xpf: 查找filter中被替换的页*/
+    int find_free_page();
+
 
     /**获取cache当前set中空余的line*/
     int get_cache_free_line(_u64 set_base, int level);
@@ -204,13 +229,6 @@ public:
 
     /**对一个指令进行分析*/
     void do_cache_op(_u64 addr, char oper_style);
-
-    /**读取取样的参数*/
-    void load_sample_config(int input_sample_num, int page_unit, int sample_time);
-//    void load_sample_config(int input_sample_num, int page_unit);
-
-    /**取样：取当亲1ms内使用频率最高的页，作为下一毫秒使用频率最高的页*/
-//    void CacheSim::sample(_u64 addr, double op_time);
 
     /**读入trace文件*/
     void load_trace(const char *filename);
