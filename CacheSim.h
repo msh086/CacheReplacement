@@ -174,8 +174,8 @@ public:
     /**xpf:CLOCK-DWF filter*/
     std::vector<Page> filter;
     int ptr_index;//记录遍历filter后的位置
-    _u32 hot_page_thresh_hold = 1;
-    int expiration = 1000; //这两个值还需要实验一下
+    _u32 hot_page_thresh_hold = 50;
+    int expiration = 20000; //这两个值还需要实验一下
     _u64 find_cnt = 0;
     _u64 miss_cnt = 0;//直接判为miss的次数
 

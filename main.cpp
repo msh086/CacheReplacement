@@ -227,7 +227,7 @@ int main(const int argc, const char *argv[]) {
     _u64 ways[] = {8};
 //    _u64 ways[] = {1};
 //    _u64 cache_size[] = {0x100000, 0x200000, 0x300000, 0x400000};
-    _u64 cache_size[] = {0x400000};
+    _u64 cache_size[] = {0x200000};
     int ms[] = {3};
     int i, j, m, k;
     CacheSim cache;
