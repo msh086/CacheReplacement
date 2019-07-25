@@ -33,7 +33,15 @@ algorithm
 /home/embedded/文档/华为/simulator/CacheSim.h
 map
 /home/embedded/文档/华为/simulator/map
+iostream
+-
 vector
+-
+assert.h
+-
+list
+-
+unordered_map
 -
 
 /home/embedded/文档/华为/simulator/argparse.hpp

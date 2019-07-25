@@ -21,7 +21,13 @@ const char OPERATION_UNLOCK = 'u';
 
 
 #include "map"
-#include <vector>
+#include<iostream>
+#include<vector>
+#include <assert.h>
+#include <list>
+#include <unordered_map>
+//#include <ostream>
+//using namespace std;
 
 /** 替换算法*/
 enum cache_swap_style {
@@ -32,13 +38,20 @@ enum cache_swap_style {
     CACHE_SWAP_SRRIP,
     CACHE_SWAP_SRRIP_FP,
     CACHE_SWAP_BRRIP,
-    CACHE_SWAP_DRRIP
+    CACHE_SWAP_DRRIP,
+    CACHE_SWAP_CAR
+
 };
 
 
 //写内存方法就默认写回吧。
 class Cache_Line {
 public:
+    /**xpf: CAR*/
+//    _u8 reference_bit = 0;
+//    _u64 addr;
+
+
     _u64 tag;
     /**计数，FIFO里记录最一开始的访问时间，LRU里记录上一次访问的时间*/
     _u64 count;
@@ -80,17 +93,249 @@ public:
     _u64 lru_count;
 
     /**xpf: CLOCK-DWF*/
-    _u32 frequency; //页在filter中，被访问的次数
-    _u32 rotation_cnt; //页在filter中，但未被访问的次数
-    _u64 page_num;//页号
+//    _u32 frequency; //页在filter中，被访问的次数
+//    _u32 rotation_cnt; //页在filter中，但未被访问的次数
+//    _u64 page_num;//页号
+
+    /**xpf: CAR*/
+    _u64 page_num;
+    int reference_bit;
+
 
     Page() {
+        this->reference_bit = 0;
         this->tag = 0;
         this->count = 0;
         this->lru_count = 0;
     }
 
     bool operator == (const Page &p) {return (this->page_num == p.page_num);} //重载==
+    Page& operator=(const Page& p) {
+        this->reference_bit = p.reference_bit;
+        this->page_num = p.page_num;
+        this->count = p.count;
+        this->lru_count = p.lru_count;
+        this->tag = p.tag;
+
+        return *this;
+    }
+};
+
+
+/**
+ * CAR
+ * CLOCKQueue
+ * */
+class CLOCKQueue
+{
+public:
+    std::vector<Page> m_pQueue;
+    _u32 m_iQueueLen;//队列元素个数
+    int m_iQueueCapacity;//队列数组容量
+    _u32 m_iHead;//队头
+    _u32 m_iTail;//队尾
+
+    /*创建循环队列*/
+    CLOCKQueue(int queueCapacity)
+    {
+        m_iQueueCapacity = queueCapacity;
+        m_iHead = 0;
+        m_iTail = 0;
+        m_iQueueLen=0;
+        m_pQueue.reserve(queueCapacity);
+    }
+    /*析构函数*/
+    ~CLOCKQueue()//析构函数，销毁队列
+    {
+        m_pQueue.clear();
+        std::vector<Page>(m_pQueue).swap(m_pQueue);
+    }
+    /*判断队列是否为空*/
+    bool QueueEmpty() const
+    {
+        if(m_iQueueLen == 0)
+            return true;
+        else
+            return false;
+        // return m_iQueueLen == 0 ? true : false;
+    }
+    /*获取队列长度*/
+    int QueueLength() const
+    {
+        return m_iQueueLen;
+    }
+    /*判断队列是否满了*/
+    bool QueueFull() const
+    {
+        if(m_iQueueLen == m_iQueueCapacity){
+            printf("QueueFull():capacity:%llu\n", m_iQueueCapacity);
+            return true;
+        }
+
+        else
+            return false;
+    }
+    /*page入队列*/
+    bool EnQueue(Page &page)//入队列
+    {
+        if(QueueFull()) {
+//            printf("Enqueue():Queue Full!\n");
+            return false;
+        }
+
+        else {
+            m_pQueue[m_iTail] = page;
+            m_iTail ++;
+            m_iTail = m_iTail % m_iQueueCapacity;
+            m_iQueueLen++;
+//            printf("QueueLen:%d\n", m_iQueueLen);
+            return true;
+        }
+    }
+    /*page出队列*/
+    Page* DeQueue()//首元素出队
+    {
+        Page *target;
+        if(QueueEmpty())
+            return nullptr;
+        else {
+            target = &m_pQueue[m_iHead];
+//            cout<<"Page num:"<<target->page_num<<endl;
+            m_iHead ++;
+            m_iHead = m_iHead % m_iQueueCapacity;
+            m_iQueueLen--;
+            return target;
+        }
+    }
+    /*查找page p是否在队列中*/
+    int Find(Page page){
+        Page *target;
+        for(int i= m_iHead; i< m_iQueueLen+m_iHead; i++)
+        {
+//            if(i%m_iQueueCapacity>=1024) //没有执行这里
+//                printf("T1 or T2 Find()越界");
+
+            target = &m_pQueue[i%m_iQueueCapacity];
+            if(target->page_num==page.page_num)
+                return i%m_iQueueCapacity;
+        }
+        return -1;
+    }
+
+private:
+
+};
+
+/**
+ * CAR
+ * Queue：一个普通的FIFO队列，用来做LRU list
+ * */
+typedef struct queueNode //与stack一样，同样单链表做基础
+{
+    Page *data;
+    queueNode *next;
+}node;
+
+class Queue //对单链表进行包装，增加两个指向node的指针
+{			//可以看做是对单链表的头结点进行改造...........
+public:
+    node *frond,*rear;
+    int length;
+
+
+    Queue()
+    {
+        rear= nullptr;
+        frond= nullptr;
+        length=0;
+    }
+
+    bool enQueue(Page &page)
+    {
+        node *pNode=new node;
+        pNode->data=&page;
+        pNode->next= nullptr;
+
+        if (this->rear!= nullptr)  //如果链队列为非空，则插入尾部
+        {
+            this->rear->next=pNode;  //注意此时只对plinkQueue的指针操作
+            this->rear=pNode;    //对plinkQueue所指向的Node操作
+        }
+        else /*链队列为空，直接赋值给rear*/
+        {
+            this->frond=pNode;
+            this->rear=pNode;          //注意此时只对plinkQueue的指针操作
+
+        }
+        length++;
+        return true;
+    }
+
+    node deQueue()//参考：http://www.cppblog.com/cxiaojia/archive/2012/08/02/186033.html
+    {
+//        printf("进入 dequeue!\n");
+        node temp  = node();
+        if (length==0) //链队列为空
+        {
+            printf("deQueue():LRU队列为空\n");
+            return temp;//返回一个空节点
+        }
+        node target = *frond;
+        node *pNode=frond;
+        frond = frond->next;//这句话有问题！！！
+        delete pNode;
+        length--;
+
+        return target;
+    }
+
+    int get_size(){
+        return length;
+    }
+
+    node* Find(Page page){
+        if(frond== nullptr) //队列为空
+            return nullptr;
+        node *cur = frond;
+        while(cur)
+        {
+            if(cur->data->page_num == page.page_num)
+                return cur;
+            cur = cur->next;
+        }
+        return nullptr;
+    }
+    /*删除队列中的节点pNode*/
+    node delete_node(node* head, Page page) {
+        node *pNode = head, *deleteNode, return_node;
+
+
+        if(page.page_num==head->data->page_num) //要删除的是队列中第一个节点
+        {
+            return_node = deQueue();
+            return return_node;
+        }
+        else{
+            while (pNode->next != NULL && pNode->next->data->page_num!=page.page_num)//找出目标节点的上一个节点
+            {
+                pNode = pNode->next;
+//            std::cout<<"not head"<<std::endl;
+            }
+//
+            if(pNode->next==rear) //要删除的是队列中最后一个节点
+                rear = pNode;
+
+            return_node = *pNode->next;
+            deleteNode = pNode->next;
+            pNode->next = pNode->next->next;//删除目标节点
+            length--;
+        }
+
+        if (deleteNode != nullptr)
+            delete deleteNode;
+
+        return return_node;
+    }
 };
 
 
@@ -171,13 +416,29 @@ public:
     int write_through;
 
     /**后添加的变量*/
+    /**xpf: CAR filter*/
+    int p_t1 = 0; //T1的阈值
+    int filter_size = 4000;
+    CLOCKQueue T1 = CLOCKQueue(filter_size), T2 = CLOCKQueue(filter_size);
+    std::list<Page> B1, B2;
+//    Queue B1 = Queue(), B2 = Queue();
+    //test
+    int not_full_cnt = 0;
+    int enqueue_cnt = 0, dequeue_cnt=0, delete_cnt=0;
+    _u64 line_cnt = 0;
+
+
+
+
+
     /**xpf:CLOCK-DWF filter*/
-    std::vector<Page> filter;
-    int ptr_index;//记录遍历filter后的位置
-    _u32 hot_page_thresh_hold = 50;
-    int expiration = 20000; //这两个值还需要实验一下
-    _u64 find_cnt = 0;
-    _u64 miss_cnt = 0;//直接判为miss的次数
+//    std::vector<Page> filter;
+//    int ptr_index;//记录遍历filter后的位置
+//    _u32 hot_page_thresh_hold = 6;
+//    int expiration = 60000; //这两个值还需要实验一下
+//    int filter_size = 1024; //page
+//    _u64 find_cnt = 0;
+//    _u64 miss_cnt = 0;//直接判为miss的次数
 
     /**xpf:sample有关的变量*/
     /*int sample_num;
@@ -218,6 +479,12 @@ public:
     void CLOCK_DWF(_u64 addr, char style);
     /**xpf: 查找filter中被替换的页*/
     int find_free_page();
+
+    /**xpf:CAR. 用CAR的思想做filter */
+    void CAR(_u64 addr, char style);
+    int replace();
+//    void do_cache_op_CAR(_u64 addr, char oper_style);
+    void directMiss(_u64 addr, char style);
 
 
     /**获取cache当前set中空余的line*/

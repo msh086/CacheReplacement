@@ -253,9 +253,9 @@ int main(const int argc, const char *argv[]) {
                            ways[j]);
                     _u64 temp_cache_size[2], temp_line_size[2], temp_ways[2];
                     temp_cache_size[0] = 0x1000;
-                    temp_cache_size[1] = cache_size[m];
+                    temp_cache_size[1] = cache_size[m];//2MB or 4MB
                     temp_line_size[0] = 128;
-                    temp_line_size[1] = line_size[i];
+                    temp_line_size[1] = line_size[i];//64B
                     temp_ways[0] = 8;
                     temp_ways[1] = ways[j];
                     cache.init(temp_cache_size, temp_line_size, temp_ways);

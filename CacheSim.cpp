@@ -55,6 +55,7 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     }
     cache_size[0] = a_cache_size[0];
     cache_size[1] = a_cache_size[1];
+
 //    在这里屏蔽两级cache 仅仅作为一个cache与share mem
     cache_line_size[0] = a_cache_line_size[0];
     cache_line_size[1] = a_cache_line_size[1];
@@ -109,6 +110,7 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     //测试时的默认配置
     swap_style[0] = CACHE_SWAP_SRRIP;
     swap_style[1] = CACHE_SWAP_LRU;
+//    swap_style[1] = CACHE_SWAP_CAR;
     // 用于SRRIP算法
 
     PSEL = 0;
@@ -121,6 +123,9 @@ void CacheSim::init(_u64 a_cache_size[3], _u64 a_cache_line_size[3], _u64 a_mapp
     overall_cycles = 0;
     mem_latency[0] = 100;
 //    mem_latency[1] =
+
+
+
     re_init();
     srand((unsigned) time(NULL));
 }
@@ -153,7 +158,7 @@ int CacheSim::check_cache_hit(_u64 set_base, _u64 addr, int level) {
     for (i = 0; i < cache_mapping_ways[level]; ++i) {
         if ((caches[level][set_base + i].flag & CACHE_FLAG_VALID) &&
             (caches[level][set_base + i].tag == ((addr >> (cache_set_shifts[level] + cache_line_shifts[level]))))) {
-            return set_base + i;
+            return set_base + i; //返回line在set内的偏移地址
         }
     }
     return -1;
@@ -454,13 +459,13 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
     tick_count++;
     if (oper_style == OPERATION_READ) cache_r_count++;
     if (oper_style == OPERATION_WRITE) cache_w_count++;
-    set_l2 = (addr >> cache_line_shifts[1]) % cache_set_size[1];
-    set_base_l2 = set_l2 * cache_mapping_ways[1];
-    hit_index_l2 = check_cache_hit(set_base_l2, addr, 1);
+    set_l2 = (addr >> cache_line_shifts[1]) % cache_set_size[1]; //line所属的set号 0-8191
+    set_base_l2 = set_l2 * cache_mapping_ways[1]; //cache内set的偏移地址 0 8 16 ...
+    hit_index_l2 = check_cache_hit(set_base_l2, addr, 1);//set内line的偏移地址 0-7
     set_l1 = (addr >> cache_line_shifts[0]) % cache_set_size[0];
     set_base_l1 = set_l1 * cache_mapping_ways[0];
     hit_index_l1 = check_cache_hit(set_base_l1, addr, 0);
-    int set_flag = get_set_flag(set_l2);
+    int set_flag = get_set_flag(set_l2); //返回当前set是否为sample set，没太看懂这个方法
     int temp_swap_style = swap_style[1];
     if (swap_style[1] == CACHE_SWAP_DRRIP) {
         /**是否是sample set*/
@@ -480,7 +485,6 @@ void CacheSim::do_cache_op(_u64 addr, char oper_style) {
                 temp_swap_style = cur_win_repalce_policy;
         }
     }
-
 
 
 
@@ -724,165 +728,389 @@ bool comp_by_value(std::pair<_u64, _u64> &a, std::pair<_u64, _u64> &b) {
  * 查找filter中被替换的page
  * 返回：victim page的index；没有这样的页则返回-1
  * */
-int CacheSim::find_free_page(){
-
-//    printf("find free page\n");
-    find_cnt++;
-
-    //从p_pointer处开始遍历filter
-//    std::vector<Page>::iterator iter;
-//    iter = std::find(filter.begin(),filter.end(),*page_pointer);
-    Page p;
-//    if(iter == filter.begin()) { //从头开始遍历
-    if(ptr_index==0){
-        for(int i=0; i<filter.size(); i++){
-            p = filter[i];
-            if(p.frequency > hot_page_thresh_hold && p.rotation_cnt < expiration) //p是hot page，保留它
-                continue;
-            else //p为victim page，将其替换
-                return i;
-        }
-        printf("从头开始遍历\n");
-    }
-    else { //pointer指在filter的中间某一位置：mid_index
-//        int mid_index = std::distance(filter.begin(), iter);
-        for (int j = ptr_index; j < filter.size(); j++){
-            p = filter[j];
-            if(p.frequency > hot_page_thresh_hold && p.rotation_cnt < expiration) //p是hot page，保留它
-                continue;
-            else //p为victim page，将其替换
-            {
-//                printf("****j****\n");
-                return j;
-            }
-        }
+//int CacheSim::find_free_page(){
 //
-        for (int k = 0; k < ptr_index; k++){
-            p = filter[k];
-            if(p.frequency > hot_page_thresh_hold && p.rotation_cnt < expiration) //p是hot page，保留它
-                continue;
-            else //p为victim page，将其替换
-            {
-//                printf("****k****\n");
-                return k;
-            }
-        }
-    }
-
-//    printf("direct miss");
-
-    return -1;
-}
-
-/*
- * 根据CLOCK-DWF算法的思想来预取page
- * filter中的每个1/16 page要维持两个参数：page_frequency；rotation_count
- * filter size设为1000*16
- * */
-void CacheSim::CLOCK_DWF(_u64 addr, char style){
-    Page p;
-    p.page_num = addr >> 12; //考虑1/16页
-
-    //判断当前页是否在filter中
-    std::vector<Page>::iterator iter;
-    iter = std::find(filter.begin(), filter.end(), p);
-    bool inFilter;
-    int index; //如果该页在filter中，其下标
-    int directMiss = 0;
-
-    if(iter != filter.end()) {
-        inFilter = true;
-        index = std::distance(filter.begin(), iter);
-    }
-    else
-        inFilter = false;
-
-    /*当前访问的页不在filter中*/
-    if(!inFilter) {
-        /*filter没有满，则存放该页*/
-        if(filter.size() < 1000) {
-
-//            printf("filter没满：do cache op\n"); //运行1000次
-
-            p.frequency = 1;
-            p.rotation_cnt = 0;
-            filter.push_back(p);
-
-            do_cache_op(addr, style);
-
-//            page_pointer = &filter[0];
-            ptr_index = 0;//下一次迭代开始的位置
-            index = filter.size()-1;
-        }
-        /*filter满了，寻找被替换的页*/
-        else {
-            int victim_idx = find_free_page(); //victim page的index
-
-
-            if(victim_idx != -1) { //找到了，替换
-
-//                printf("victim page: %d\n", victim_idx);
-
-                p.frequency = 1;
-                p.rotation_cnt = 0;
-                filter.insert(filter.begin()+victim_idx, p);
-
-                //删除victim page
-                filter.erase(filter.begin()+victim_idx+1);
-
-                do_cache_op(addr, style);
-
-//                page_pointer = &filter[victim_idx+1];
-                index = victim_idx;
-                ptr_index = index+1;
-            }
-            else { //没有找到victim page，该页不放入filter，直接miss
-
-                printf("direct miss");
-                miss_cnt++;
-
-                directMiss = 1;
-
-                if(style == OPERATION_WRITE)
-                    cache_w_miss_count++;
-                else
-                    cache_r_miss_count++;
-                cache_miss_count[1]++;
-
-//                page_pointer = &filter[0];//?没有找到则下一次查找从filter头开始
-                ptr_index = 0;
-            }
-        }
-    }
-    /*当前访问的页在filter中，此时页的下标是index*/
-    else {
-
-//        printf("页在filter中：do cache op\n");
-        do_cache_op(addr, style);//应该是直接命中的
-        filter[index].frequency++;
-        filter[index].rotation_cnt = 0;
-        //直接命中
-
-
-//        *page_pointer = filter[index+1];
-        ptr_index = index+1;
-    }
-
-    //对于所有未涉及的页，rotation_cnt++
-    for(int i=0; i<filter.size(); i++) {
-        if(directMiss == 1)
-            filter[i].rotation_cnt++;
-        else
-            if(i!=index)
-                filter[i].rotation_cnt++;
-
-    }
-
+//    find_cnt++;
+//
+//    //从p_pointer处开始遍历filter
+//    Page p;
+//
+//    for (int j = ptr_index; j < filter.size(); j++){
+//        p = filter[j];
+//        if(p.frequency > hot_page_thresh_hold && p.rotation_cnt < expiration) //p是hot page，保留它
+//            continue;
+//        else {  //p为victim page，将其替换
+//            return j;
+//        }
+//    }
+//
+//    for (int k = 0; k < ptr_index; k++) {
+//        p = filter[k];
+//        if (p.frequency > hot_page_thresh_hold && p.rotation_cnt < expiration) //p是hot page，保留它
+//            continue;
+//        else {//p为victim page，将其替换
+//            return k;
+//        }
+//    }
+//
+////    printf("direct miss");
+//    return -1;
+//}
+//
+///*
+// * 根据CLOCK-DWF算法的思想来预取page
+// * filter中的每个1/16 page要维持两个参数：page_frequency；rotation_count
+// * filter size设为1000*16
+// * */
+//void CacheSim::CLOCK_DWF(_u64 addr, char style){
+//    Page p;
+//    p.page_num = addr >> 9; //考虑1/16页
+//
+//    //判断当前页是否在filter中
+//    std::vector<Page>::iterator iter;
+//    iter = std::find(filter.begin(), filter.end(), p);
+//    bool inFilter;
+//    int index; //如果该页在filter中，其下标
+//    int directMiss = 0;
+//
+//    if(iter != filter.end()) {
+//        inFilter = true;
+//        index = std::distance(filter.begin(), iter);
+//    }
+//    else
+//        inFilter = false;
+//
+//    /*当前访问的页不在filter中*/
+//    if(!inFilter) {
+//        /*filter没有满，则存放该页*/
+//        if(filter.size() < filter_size) {
+//
+////            printf("filter没满：do cache op\n"); //运行1000次
+//
+//            p.frequency = 1;
+//            p.rotation_cnt = 0;
+//            filter.push_back(p);
+//
+//            do_cache_op(addr, style);
+//
+////            page_pointer = &filter[0];
+//            ptr_index = 0;//下一次迭代开始的位置
+//            index = filter.size()-1;
+//        }
+//        /*filter满了，寻找被替换的页*/
+//        else {
+//            int victim_idx = find_free_page(); //victim page的index
+//
+//
+//            if(victim_idx != -1) { //找到了，替换
+//
+////                printf("victim page: %d\n", victim_idx);
+//
+//                p.frequency = 1;
+//                p.rotation_cnt = 0;
+//                filter.insert(filter.begin()+victim_idx, p);
+//
+//                //删除victim page
+//                filter.erase(filter.begin()+victim_idx+1);
+//
+//                do_cache_op(addr, style);
+//
+////                page_pointer = &filter[victim_idx+1];
+//                index = victim_idx;
+//                ptr_index = index+1;
+//            }
+//            else { //没有找到victim page，该页不放入filter，直接miss
+//                /*直接miss之前要先判断当前cache line是否已经在cache中*/
+//                long long set_l2, set_base_l2, hit_index_l2;
+//                set_l2 = (addr >> cache_line_shifts[1]) % cache_set_size[1];
+//                set_base_l2 = set_l2 * cache_mapping_ways[1];
+//                hit_index_l2 = check_cache_hit(set_base_l2, addr, 1);
+//                int temp_swap_style = swap_style[1];
+//
+//                if (hit_index_l2 >= 0){
+//                    /*判断读写*/
+//                    if (style == OPERATION_READ){
+//                        cache_r_count++;
+//                        cache_r_hit_count++;
+//                        cache_hit_count[1]++;
+//                        caches[1][hit_index_l2].count = tick_count;
+//                        switch (temp_swap_style) {
+//                            case CACHE_SWAP_BRRIP:
+//                            case CACHE_SWAP_SRRIP:
+//                                caches[1][hit_index_l2].RRPV = 0;
+//                                break;
+//                            case CACHE_SWAP_SRRIP_FP:
+//                                if (caches[1][hit_index_l2].RRPV != 0) {
+//                                    caches[1][hit_index_l2].RRPV -= 1;
+//                                }
+//                                break;
+//                        }
+//                    }
+//                    else{
+//                        cache_w_count++;
+//                        cache_w_hit_count++;
+//                        cache_hit_count[1]++;
+//                        caches[1][hit_index_l2].count = tick_count;
+//                        if (write_through) {
+//                            cache_w_memory_count++;
+//                        } else {
+//                            caches[1][hit_index_l2].flag |= CACHE_FLAG_DIRTY;
+//                        }
+//                        switch (temp_swap_style) {
+//                            case CACHE_SWAP_BRRIP:
+//                            case CACHE_SWAP_SRRIP:
+//                                caches[1][hit_index_l2].RRPV = 0;
+//                                break;
+//                            case CACHE_SWAP_SRRIP_FP:
+//                                if (caches[1][hit_index_l2].RRPV != 0) {
+//                                    caches[1][hit_index_l2].RRPV -= 1;
+//                                }
+//                                break;
+////                case CACHE_SWAP_DRRIP:
+////                    break;
+//                        }
+//                    }
+//                }
+//                else{ /*cache里也没有，直接miss*/
+//                    //                printf("direct miss\n");
+//                    miss_cnt++;
+//                    directMiss = 1;
+//
+//                    if(style == OPERATION_WRITE)
+//                        cache_w_miss_count++;
+//                    else
+//                        cache_r_miss_count++;
+//                    cache_miss_count[1]++;
+//                }
+//                ptr_index = 0;//?没有找到则下一次查找从filter头开始
+//            }
+//        }
+//    }
+//    /*当前访问的页在filter中，此时页的下标是index*/
+//    else {
+//
+////        printf("页在filter中：do cache op\n");
+//        do_cache_op(addr, style);//应该是直接命中的
+//        filter[index].frequency++;
+//        filter[index].rotation_cnt = 0;
+//        //直接命中
+//
+//
+////        *page_pointer = filter[index+1];
+//        ptr_index = index+1;
+//    }
+//
+//    //对于所有未涉及的页，rotation_cnt++
 //    for(int i=0; i<filter.size(); i++) {
-//        printf("rotation:%llu\n", filter[i].rotation_cnt);
+//        if(directMiss == 1)
+//            filter[i].rotation_cnt++;
+//        else
+//            if(i!=index)
+//                filter[i].rotation_cnt++;
 //
 //    }
+//
+////    for(int i=0; i<filter.size(); i++) {
+////        printf("rotation:%llu\n", filter[i].rotation_cnt);
+////
+////    }
+//}
+
+/**
+ * CAR-directMiss(): 没有页能从filter中替换出去，检查page是否在cache中
+ *      若在，则直接做cache命中的操作；否则直接cache miss
+ * */
+void CacheSim::directMiss(_u64 addr, char style){
+
+//    printf("directMiss():directMiss\n");//可以进到这里来
+
+    /*直接miss之前要先判断当前cache line是否已经在cache中*/
+    long long set_l2, set_base_l2, hit_index_l2;
+    set_l2 = (addr >> cache_line_shifts[1]) % cache_set_size[1];
+    set_base_l2 = set_l2 * cache_mapping_ways[1];
+    hit_index_l2 = check_cache_hit(set_base_l2, addr, 1);
+//    int temp_swap_style = swap_style[1];
+
+    if (hit_index_l2 >= 0){
+        /*判断读写*/
+        if (style == OPERATION_READ){
+            cache_r_count++;
+            cache_r_hit_count++;
+            cache_hit_count[1]++;
+            caches[1][hit_index_l2].count = tick_count;
+        }
+        else{
+            cache_w_count++;
+            cache_w_hit_count++;
+            cache_hit_count[1]++;
+            caches[1][hit_index_l2].count = tick_count;
+            if (write_through) {
+                cache_w_memory_count++;
+            } else {
+                caches[1][hit_index_l2].flag |= CACHE_FLAG_DIRTY;
+            }
+
+        }
+    }
+    else{ /*cache里也没有，直接miss*/
+
+        if(style == OPERATION_WRITE)
+            cache_w_miss_count++;
+        else
+            cache_r_miss_count++;
+        cache_miss_count[1]++;
+    }
 }
+
+
+
+int CacheSim::replace(){
+
+//    printf("replace\n");
+
+    int isfound = 0;
+    //T1
+    if(T1.QueueLength()>=std::max(1, p_t1)) { /*|T1|>=max(1,p_t1)*/
+        for(int i=0; i<T1.QueueLength(); i++) {
+            if(T1.m_pQueue[T1.m_iHead].reference_bit==0) {
+                isfound = 1;
+                /*删除T1头的页，将它放在B1的MRU处*/
+                B1.push_back(*T1.DeQueue());
+                return isfound;
+            }
+            else{
+                T1.m_pQueue[T1.m_iHead].reference_bit = 0;
+                /*将当前页放到T2尾*/
+                T2.EnQueue(*T1.DeQueue());
+            }
+        }
+    }
+    else{ //T2
+
+//        printf("replace():遍历T2\n");
+
+        for(int j = 0; j < T2.QueueLength(); j++){
+            if(T2.m_pQueue[T1.m_iHead].reference_bit==0){
+                isfound=1;
+                /*删除T2头页，将它放在B2的MRU处*/
+                B2.push_back(*T2.DeQueue());
+                enqueue_cnt++;
+
+                return isfound;
+            }
+            else{
+                T2.m_pQueue[T1.m_iHead].reference_bit = 0;
+                /*将当前页放在T2尾*/
+                T2.EnQueue(*T2.DeQueue());
+            }
+        }
+    }
+
+    return isfound;
+}
+
+/**
+ * CAR
+ * */
+ void CacheSim::CAR(_u64 addr, char style){
+     Page p = Page();
+     p.page_num = addr >> 9;
+
+     int index_in_T1 = T1.Find(p), index_in_T2 = T2.Find(p);
+     auto iter_B1 = std::find(B1.begin(), B1.end(), p);
+     auto iter_B2 = std::find(B2.begin(), B2.end(), p);
+
+
+     if(index_in_T1!= -1 || index_in_T2 != -1) { /**filter hit*/
+
+//         printf();
+
+//        p.reference_bit = 1; //问题：不能将filter中对用的page的reference bit置成1
+
+        if(index_in_T1!= -1){ //page在T1中
+            T1.m_pQueue[index_in_T1].reference_bit = 1;
+        }
+        else{ //page在T2中
+            T2.m_pQueue[index_in_T2].reference_bit = 1;
+        }
+
+        do_cache_op(addr, style);
+     }
+     else{ /**filter miss*/
+         if((T1.QueueLength()+T2.QueueLength())==filter_size) { /**filter满了*/
+
+             int isFound = replace();
+
+             if(isFound==1){ //找到了victim page，剔除操作在replace()已经操作完毕
+
+                 do_cache_op(addr, style);
+
+                 /*对B1 B2进行操作*/
+                 if((iter_B1==B1.end()&& iter_B2==B2.end())&&(T1.QueueLength()+B1.size()==filter_size)) /*p不在B1 B2中，|T1|+|B1|=filter_size*/
+                 {
+                     /*删除B1中的LRU page*/
+//                     printf("入 B1的长度为: %d\n", B1.get_size());
+                     B1.pop_front();
+//                     printf("出 B1的长度为: %d\n", B1.get_size());
+
+                 }
+                 else if((T1.QueueLength()+B1.size()+T2.QueueLength()+B2.size()==(2*filter_size))&&(iter_B1==B1.end() && iter_B2==B2.end())) /*|T1|+|B1|+|T2|+|B2|=2*filter_size，p不在B1 B2中*/
+                 {
+                     /*删除B2中的LRU page*/
+                     B2.pop_front();
+                     dequeue_cnt++;
+//                     printf("B2的长度：%d\n", B2.get_size());
+                 }
+
+             }
+             else { //没有可以替换的page
+                 directMiss(addr, style);
+                 return;
+             }
+         }
+         else { /*filter没有满*/
+
+             do_cache_op(addr, style);
+         }
+
+
+         /**把p放进filter中*/
+         if(iter_B1==B1.end() && iter_B2==B2.end()) /*p不在B1 B2中*/
+         {
+             /*将p插到T1尾，reference_bit=0*/
+             p.reference_bit = 0;
+             T1.EnQueue(p);
+         }
+         else if(iter_B1!= B1.end()) /*p在B1中*/
+         {
+             /*adapt*/
+             p_t1 = std::min(p_t1+(std::max(1*1.0, 1.0*B2.size()/B1.size())), filter_size*1.0);
+             /*p从B1中删除，移到T2尾，reference_bit=0*/
+             iter_B1->reference_bit = 0;
+             Page temp1 = *iter_B1;
+             B1.erase(iter_B1);
+             T2.EnQueue(temp1);
+         }
+         else /*p在B2中*/
+         {
+             /*adapt*/
+             p_t1 = std::max(p_t1-std::max(1*1.0,1.0*B1.size()/B2.size()),0*1.0);
+             /*p从B2中删除，移到T2尾，reference_bit=0*/
+             iter_B2->reference_bit = 0;
+             Page temp2 = *iter_B2;
+             delete_cnt++;
+             T2.EnQueue(temp2);
+
+//             p.reference_bit = 0;/*错误的做法*/
+//             B2.delete_node(B2.frond, p);
+//             T2.EnQueue(p);
+         }
+    }
+//     printf("enqueue_cnt:%d\n", enqueue_cnt);
+//     printf("dequeue_cnt:%d\n", dequeue_cnt);
+//     printf("delete_cnt:%d\n", delete_cnt);
+ }
+
 
 
 /**从文件读取trace，在我最后的修改目标里，为了适配项目，这里需要改掉*/
@@ -926,6 +1154,7 @@ void CacheSim::load_trace(const char *filename) {
 
 //        do_cache_op(addr, style);
 
+        /*sample*/
 //        sample(addr, ATIME);
 
 //        //判断(不在前1500页时，还要考虑命不命中)
@@ -949,8 +1178,15 @@ void CacheSim::load_trace(const char *filename) {
 //            cache_miss_count[1]++;
 //        }
 
-        /*filter + do cache op*/
-        CLOCK_DWF(addr, style);
+        /*CLOCK-filter + do cache op*/
+//        CLOCK_DWF(addr, style);
+
+        /*CAR-filter*/
+        line_cnt++;
+//        printf("line_cnt:%llu\n", line_cnt);
+        CAR(addr, style);
+
+//        printf("load_trace():出CAR\n");
 
 
         switch (style) {
@@ -1025,11 +1261,11 @@ void CacheSim::load_trace(const char *filename) {
     printf("\n=======Bandwidth=======\nMemory --> Cache:\t%.4fGB\nCache --> Memory:\t%.4fMB\ncache sum:\t%.4fGB\nsum:\t%.4fGB\n",
            cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024,
            cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024,
-           (cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024)+cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024/ 1024,
-           (cache_miss_count[1]+ cache_hit_count[1]-tick_count) *cache_line_size[1] *1.0/1024/1024/1024
-           +((cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024)+cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024/ 1024));
-    printf("find count:%d\n", find_cnt);
-    printf("direct miss count:%d\n", miss_cnt);
+           (cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024)+cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024/ 1024, //cache sum：经过cache操作的流量总和
+           (cache_miss_count[1]+ cache_hit_count[1]-tick_count) *cache_line_size[1] *1.0/1024/1024/1024 //未经cache的那部分流量
+           +((cache_r_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024 / 1024)+cache_w_memory_count * cache_line_size[1] * 1.0 / 1024 / 1024/ 1024)); //sum：包括了直接miss掉的那部分流量
+//    printf("find count:%d\n", find_cnt);
+//    printf("direct miss count:%d\n", miss_cnt);
 
     // 读写通信
 //    printf("read : %d Bytes \t %dKB\n write : %d Bytes\t %dKB \n",
