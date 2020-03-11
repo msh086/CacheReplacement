@@ -6,9 +6,9 @@
 
 #IncludeRegexTransform: 
 
-/home/embedded/文档/华为/simulator/CacheSim.cpp
+/home/msh/Cache/src/CacheExpSrc/CacheSim.cpp
 CacheSim.h
-/home/embedded/文档/华为/simulator/CacheSim.h
+/home/msh/Cache/src/CacheExpSrc/CacheSim.h
 cstdlib
 -
 cstring
@@ -22,17 +22,19 @@ time.h
 climits
 -
 map
-/home/embedded/文档/华为/simulator/map
+/home/msh/Cache/src/CacheExpSrc/map
 fstream
 -
 vector
 -
 algorithm
 -
+string
+-
 
-/home/embedded/文档/华为/simulator/CacheSim.h
+/home/msh/Cache/src/CacheExpSrc/CacheSim.h
 map
-/home/embedded/文档/华为/simulator/map
+/home/msh/Cache/src/CacheExpSrc/map
 iostream
 -
 vector
@@ -44,7 +46,7 @@ list
 unordered_map
 -
 
-/home/embedded/文档/华为/simulator/argparse.hpp
+/home/msh/Cache/src/CacheExpSrc/argparse.hpp
 unordered_map
 -
 map
@@ -66,7 +68,7 @@ cassert
 algorithm
 -
 
-/home/embedded/文档/华为/simulator/main.cpp
+/home/msh/Cache/src/CacheExpSrc/main.cpp
 iostream
 -
 cstring
@@ -74,7 +76,7 @@ cstring
 stdlib.h
 -
 CacheSim.h
-/home/embedded/文档/华为/simulator/CacheSim.h
+/home/msh/Cache/src/CacheExpSrc/CacheSim.h
 argparse.hpp
-/home/embedded/文档/华为/simulator/argparse.hpp
+/home/msh/Cache/src/CacheExpSrc/argparse.hpp
 

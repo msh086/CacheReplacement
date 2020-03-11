@@ -1,1 +1,0 @@
-/home/embedded/文档/华为/simulator/CacheSim -i /home/embedded/文档/华为/trace/fortnite_60fps_720p_1244M_B620.gpu.txt

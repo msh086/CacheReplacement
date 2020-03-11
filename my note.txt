@@ -1,0 +1,20 @@
+FRU(LFU?):
+    hit: cacheLine.FRU++
+    insert: cacheLine.FRU = 1
+    remove: with min(cacheLine.FRU)
+
+SRRIP:
+    hit: cacheLine.RRPV = 0
+    insert: cacheLine.RRPV = 2^M - 2 // second to last
+    remove: increase all cacheLine.RRPV until some cacheLine.RRPV == 2^M - 1, remove it
+
+BRRIP:
+    hit: same as SRRIP
+    insert: with small probalility, cacheLine.RRPV = 2^M - 2; otherwise, cacheLine.RRPV = 2^M - 1
+    remove: same as SRRIP
+
+SRRIP_FP:
+    hit: if(cacheLine.RRPV) cacheLine.RRPV--
+    insert: same as SRRIP
+    remove: same as SRRIP
+

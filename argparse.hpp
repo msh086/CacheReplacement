@@ -42,7 +42,7 @@ typedef std::map<std::string, size_t> IndexMap;
 class ArgumentParser {
 private:
     class Any;
-    class Argument;
+    struct Argument;
     class PlaceHolder;
     class Holder;
     typedef std::string String;

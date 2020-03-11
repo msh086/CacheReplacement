@@ -1,1 +1,1 @@
-/usr/bin/c++   -std=c++11 -Wall -O3 -DNDEBUG   CMakeFiles/CacheSim.dir/main.cpp.o CMakeFiles/CacheSim.dir/CacheSim.cpp.o  -o CacheSim 
+/usr/bin/c++   -std=c++11 -Wall   CMakeFiles/CacheSim.dir/main.cpp.o CMakeFiles/CacheSim.dir/CacheSim.cpp.o  -o CacheSim 

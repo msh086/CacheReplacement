@@ -4,8 +4,8 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_CXX
-  "/home/embedded/文档/华为/simulator/CacheSim.cpp" "/home/embedded/文档/华为/simulator/CMakeFiles/CacheSim.dir/CacheSim.cpp.o"
-  "/home/embedded/文档/华为/simulator/main.cpp" "/home/embedded/文档/华为/simulator/CMakeFiles/CacheSim.dir/main.cpp.o"
+  "/home/msh/Cache/src/CacheExpSrc/CacheSim.cpp" "/home/msh/Cache/src/CacheExpSrc/CMakeFiles/CacheSim.dir/CacheSim.cpp.o"
+  "/home/msh/Cache/src/CacheExpSrc/main.cpp" "/home/msh/Cache/src/CacheExpSrc/CMakeFiles/CacheSim.dir/main.cpp.o"
   )
 set(CMAKE_CXX_COMPILER_ID "GNU")
 
