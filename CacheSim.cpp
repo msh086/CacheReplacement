@@ -28,7 +28,7 @@ static inline _u64 get_ulonglong_max(void)
 
 // All addresses have length no more than 34 bits, concact the CPU/GPU bit with the higher 20 bits, signature block has size of 2^14B = 16KB
 // #define SHCT_index(addr, source) ((addr >> 14) | (source << 20))
-#define SHCT_index(addr) ((addr >> 13))
+#define SHCT_index(addr) (((addr & 0xffffffff) >> 11))
 char* CacheSim::SHCT = nullptr;
 
 CacheSim::CacheSim() {}
@@ -192,7 +192,11 @@ void CacheSim::cache_hit(_u64 set_base, _u64 index, int a_swap_style, _u64 addr,
                     }
                     break;
                 case CACHE_SWAP_SHIP:
-                    caches[set_base + index].RRPV >>= 1; // !binary promote
+                    // if(caches[set_base + index].RRPV > 4)
+                    //     caches[set_base + index].RRPV--;
+                    // else
+                    //     caches[set_base + index].RRPV = 0;
+                    caches[set_base + index].RRPV >>= 1;
                     caches[set_base + index].outcome = 1;
                     // if(source == cpu_mask){ // reference from cpu
                     //     caches[set_base + index].cpu = 1;
@@ -204,7 +208,7 @@ void CacheSim::cache_hit(_u64 set_base, _u64 index, int a_swap_style, _u64 addr,
                     //     if(SHCT[SHCT_index(addr, gpu_mask)] < 8)
                     //         SHCT[SHCT_index(addr, gpu_mask)]++;
                     // }
-                    if(SHCT[SHCT_index(addr)] < 8)
+                    if(SHCT[SHCT_index(addr)] < 7)
                         SHCT[SHCT_index(addr)]++;
                     break;
         }

@@ -76,7 +76,7 @@ int main(int argc, char** argv){
     //     printf("higher bit should lie in [1, 10]\n");
     //     return 0;
     // }
-    int maxBits = 0;
+    ull header[4] = {0};
     ull cpu = 0, gpu = 0;
     ull line = 0;
     // ull* counter = new ull[1 << higherBits];
@@ -87,15 +87,11 @@ int main(int argc, char** argv){
             break;
         line++;
         ull addr = read64(buffer + seek_field(buffer, 1));
-        int length = bit_length(addr);
-        if(length > maxBits){
-            maxBits = length;
-            printf("maxBits increases to %d at line %llu, addr = %llx\n", maxBits, line, addr);
-        }
-        if(buffer[seek_field(buffer, 4) + 1] <= '9')
-            cpu++;
-        else
-            gpu++;
+        header[addr >> 32]++;
+        // if(buffer[seek_field(buffer, 4) + 1] <= '9')
+        //     cpu++;
+        // else
+        //     gpu++;
         // counter[(readHex(buffer + seek_field(buffer, 1))) >> (32 - higherBits)]++;
         memset(buffer, 0, 100);
     }
@@ -103,7 +99,8 @@ int main(int argc, char** argv){
     // for(int i = 0; i < (1 << higherBits); i++)
         // printf("%#x %llu\n", i, counter[i]);
     // delete[] counter;
-    printf("maxBits: %d\n", maxBits);
+    for(int i = 0; i < 4; i++)
+        printf("MSB:%x count:%llu percentage:%f\n", i, header[i], (double)header[i] / line);
     printf("cpu: %llu, gpu: %llu\n", cpu, gpu);
     return 0;
 }

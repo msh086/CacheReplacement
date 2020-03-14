@@ -141,6 +141,8 @@ public:
     const static uint cpu_mask = 1;
     const static uint gpu_mask = 0;
 
+    uint SHCT_bound = 8;
+
     bool error_bit = false;
 
     _u64 calc_addr(_u64 set_base, _u64 tag);
