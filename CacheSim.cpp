@@ -192,12 +192,15 @@ void CacheSim::cache_hit(_u64 set_base, _u64 index, int a_swap_style, _u64 addr,
                     }
                     break;
                 case CACHE_SWAP_SHIP:
-                    // if(caches[set_base + index].RRPV > 4)
-                    //     caches[set_base + index].RRPV--;
-                    // else
-                    //     caches[set_base + index].RRPV = 0;
-                    caches[set_base + index].RRPV >>= 1;
-                    caches[set_base + index].outcome = 1;
+                    //?promote: staged
+                    if(caches[set_base + index].RRPV > 4)
+                        caches[set_base + index].RRPV--;
+                    else
+                        caches[set_base + index].RRPV = 0;
+                    //?promote: binary
+                    // caches[set_base + index].RRPV >>= 1;
+                    // caches[set_base + index].outcome = 1;
+                    //?use source cpu/gpu
                     // if(source == cpu_mask){ // reference from cpu
                     //     caches[set_base + index].cpu = 1;
                     //     if(SHCT[SHCT_index(addr, cpu_mask)] < 8)
@@ -240,6 +243,7 @@ void CacheSim::cache_insert(_u64 set_base, _u64 index, int a_swap_style, _u64 ad
                 case CACHE_SWAP_SHIP:
                     // clear previous flags
                     caches[set_base + index].outcome = 0;
+                    //?update: use source cpu/gpu
                     // if(source == cpu_mask){
                     //     caches[set_base + index].cpu = 1;
                     //     caches[set_base + index].gpu = 0;
@@ -323,6 +327,7 @@ int CacheSim::cache_find_victim(_u64 set_base , int a_swap_style, int hit_index)
    if (free_index >= 0) {
         if(a_swap_style == CACHE_SWAP_SHIP){
             _u64 addr = calc_addr(set_base, caches[set_base + free_index].tag);
+            //?use source cpu/gpu
             // if(!caches[set_base + free_index].outcome){
             //     if(caches[set_base + free_index].cpu && SHCT[SHCT_index(addr, cpu_mask)])
             //         SHCT[SHCT_index(addr, cpu_mask)]--;
@@ -401,13 +406,6 @@ void CacheSim::dump_cache_set_info(_u64 set_base) {
 void CacheSim::do_cache_op(_u64 addr, char oper_style, int source) {
     _u64 set, set_base;
     int hit_index, free_index;
-
-    // debug
-    // if(!error_bit && addr >> 32){
-    //     error_bit = true;
-    //     printf("error32 %llu\n", tick_count);
-    // }
-
 
     tick_count++;
     if (oper_style == OPERATION_READ) cache_r_count++;
